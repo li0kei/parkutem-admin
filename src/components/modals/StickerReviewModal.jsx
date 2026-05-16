@@ -191,8 +191,9 @@ function StickerReviewModal({
               </div>
 
               <p className="mt-4 text-sm leading-6 text-slate-500">
-                This is a dummy frontend action. Later this will update vehicle
-                ANPR permission in the backend.
+                This ANPR permission is saved to Supabase. Later, the ANPR recognition
+                pipeline will use this record to decide whether a detected student/staff
+                vehicle should be allowed or flagged.
               </p>
             </div>
           </div>

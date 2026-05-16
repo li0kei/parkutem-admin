@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Car,
   CheckCircle,
@@ -26,17 +26,70 @@ import {
   vehicleUserTypeOptions,
 } from "../data/vehicles"
 
+import {
+  loadAdminVehicleRecords,
+  subscribeToVehicleRecords,
+  unsubscribeFromVehicleRecords,
+  updateVehicleAnprStatus,
+  updateVehicleStickerStatus,
+} from "../services/adminVehicleService"
+
 // =====================================================
 // VEHICLES & STICKER RECORDS PAGE
 // =====================================================
 
 function Vehicles() {
   const [vehicleData, setVehicleData] = useState(vehicles)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedSticker, setSelectedSticker] = useState("All Stickers")
   const [selectedAnpr, setSelectedAnpr] = useState("All ANPR")
   const [selectedVehicle, setSelectedVehicle] = useState(null)
+
+    // =====================================================
+  // LOAD VEHICLE RECORDS FROM SUPABASE
+  // =====================================================
+
+  async function loadVehicles() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realVehicles = await loadAdminVehicleRecords()
+
+      setVehicleData(realVehicles)
+    } catch (error) {
+      console.error("Failed to load vehicle records:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to load vehicle records from Supabase. Please check table access or schema."
+      )
+
+      setVehicleData(vehicles)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadVehicles()
+
+    const channel = subscribeToVehicleRecords(() => {
+      loadVehicles()
+    })
+
+    return () => {
+      unsubscribeFromVehicleRecords(channel)
+    }
+  }, [])
 
   // =====================================================
   // FILTERED VEHICLES
@@ -47,12 +100,12 @@ function Vehicles() {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
-        vehicle.plateNumber.toLowerCase().includes(searchValue) ||
-        vehicle.ownerName.toLowerCase().includes(searchValue) ||
-        vehicle.universityId.toLowerCase().includes(searchValue) ||
-        vehicle.vehicleModel.toLowerCase().includes(searchValue) ||
-        vehicle.vehicleColor.toLowerCase().includes(searchValue) ||
-        vehicle.faculty.toLowerCase().includes(searchValue)
+        String(vehicle.plateNumber || "").toLowerCase().includes(searchValue) ||
+        String(vehicle.ownerName || "").toLowerCase().includes(searchValue) ||
+        String(vehicle.universityId || "").toLowerCase().includes(searchValue) ||
+        String(vehicle.vehicleModel || "").toLowerCase().includes(searchValue) ||
+        String(vehicle.vehicleColor || "").toLowerCase().includes(searchValue) ||
+        String(vehicle.faculty || "").toLowerCase().includes(searchValue)
 
       const matchesUserType =
         selectedUserType === "All Types" ||
@@ -97,62 +150,65 @@ function Vehicles() {
   // UPDATE STICKER STATUS
   // =====================================================
 
-  function handleUpdateStickerStatus(vehicleId, newStatus) {
-    const updateVehicle = (vehicle) => {
-      if (vehicle.id !== vehicleId) {
-        return vehicle
-      }
+  async function handleUpdateStickerStatus(vehicleId, newStatus) {
+    try {
+      const updatedVehicle = await updateVehicleStickerStatus(
+        vehicleId,
+        newStatus
+      )
 
-      const shouldEnableAnpr = newStatus === "Active"
+      setVehicleData((prev) =>
+        prev.map((vehicle) =>
+          vehicle.id === vehicleId ? updatedVehicle : vehicle
+        )
+      )
 
-      return {
-        ...vehicle,
-        stickerStatus: newStatus,
-        anprStatus: shouldEnableAnpr ? "Enabled" : vehicle.anprStatus,
-        expiryDate: shouldEnableAnpr ? "15 May 2027" : vehicle.expiryDate,
-        remarks:
-          newStatus === "Active"
-            ? "Sticker approved by admin. ANPR access can be enabled."
-            : vehicle.remarks,
-      }
+      setSelectedVehicle((prev) => {
+        if (!prev || prev.id !== vehicleId) {
+          return prev
+        }
+
+        return updatedVehicle
+      })
+    } catch (error) {
+      console.error("Failed to update sticker status:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to update sticker status in Supabase."
+      )
     }
-
-    setVehicleData((prev) => prev.map(updateVehicle))
-
-    setSelectedVehicle((prev) => {
-      if (!prev || prev.id !== vehicleId) {
-        return prev
-      }
-
-      return updateVehicle(prev)
-    })
   }
 
   // =====================================================
   // UPDATE ANPR STATUS
   // =====================================================
 
-  function handleUpdateAnprStatus(vehicleId, newStatus) {
-    const updateVehicle = (vehicle) => {
-      if (vehicle.id !== vehicleId) {
-        return vehicle
-      }
+  async function handleUpdateAnprStatus(vehicleId, newStatus) {
+    try {
+      const updatedVehicle = await updateVehicleAnprStatus(vehicleId, newStatus)
 
-      return {
-        ...vehicle,
-        anprStatus: newStatus,
-      }
+      setVehicleData((prev) =>
+        prev.map((vehicle) =>
+          vehicle.id === vehicleId ? updatedVehicle : vehicle
+        )
+      )
+
+      setSelectedVehicle((prev) => {
+        if (!prev || prev.id !== vehicleId) {
+          return prev
+        }
+
+        return updatedVehicle
+      })
+    } catch (error) {
+      console.error("Failed to update ANPR status:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to update ANPR status in Supabase."
+      )
     }
-
-    setVehicleData((prev) => prev.map(updateVehicle))
-
-    setSelectedVehicle((prev) => {
-      if (!prev || prev.id !== vehicleId) {
-        return prev
-      }
-
-      return updateVehicle(prev)
-    })
   }
 
   // =====================================================
@@ -168,6 +224,23 @@ function Vehicles() {
 
   return (
     <div className="space-y-6">
+            
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
+
+          {loadError && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+              {loadError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+              Loading vehicle and sticker records from Supabase...
+            </div>
+          )}
+
       {/* =====================================================
           SUMMARY PANEL
           ===================================================== */}
@@ -307,7 +380,7 @@ function Vehicles() {
           </div>
 
           <span className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700">
-            Sticker Review
+            Supabase Vehicle Registry
           </span>
         </div>
 

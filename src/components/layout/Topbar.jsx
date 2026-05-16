@@ -43,7 +43,8 @@ const pageTitleMap = {
   },
   "/payments": {
     title: "Wallet & Payment Transactions",
-    subtitle: "Track reservation fees, parking fees, guest payments, and refunds.",
+    subtitle:
+      "Track reservation fees, parking fees, guest payments, and refunds.",
   },
   "/reports": {
     title: "Reports & Analytics",
@@ -56,8 +57,22 @@ const pageTitleMap = {
   },
   "/settings": {
     title: "Settings",
-    subtitle: "Configure dummy parking policies and admin profile settings.",
+    subtitle: "Configure parking policies and admin profile settings.",
   },
+}
+
+// =====================================================
+// FORMAT ROLE
+// =====================================================
+
+function formatAdminRole(role) {
+  if (!role) {
+    return "Admin"
+  }
+
+  return role
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
 // =====================================================
@@ -72,6 +87,9 @@ function Topbar({ setIsMobileOpen }) {
     title: "ParkUTeM Admin",
     subtitle: "Admin management console.",
   }
+
+  const adminName = admin?.full_name || admin?.name || "ParkUTeM Admin"
+  const adminRole = formatAdminRole(admin?.role)
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
@@ -122,10 +140,11 @@ function Topbar({ setIsMobileOpen }) {
 
             <div className="min-w-0">
               <p className="truncate text-sm font-black text-slate-900">
-                {admin.name}
+                {adminName}
               </p>
+
               <p className="truncate text-xs font-semibold text-slate-500">
-                {admin.role}
+                {adminRole}
               </p>
             </div>
           </div>

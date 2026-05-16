@@ -72,7 +72,11 @@ function BayManageModal({ bay, isOpen, onClose, onUpdateStatus }) {
             <InfoBox
               icon={Cpu}
               label="Sensor Health"
-              value={`${bay.sensorStatus} • ${bay.sensorBattery}`}
+              value={
+                bay.sensorStatus === "Placeholder"
+                  ? "Placeholder • IoT sensor not connected yet"
+                  : `${bay.sensorStatus} • ${bay.sensorBattery}`
+              }
             />
 
             <InfoBox
@@ -122,8 +126,8 @@ function BayManageModal({ bay, isOpen, onClose, onUpdateStatus }) {
             </div>
 
             <p className="mt-4 text-sm leading-6 text-slate-500">
-              This is a dummy frontend action. Later, this update will be saved
-              to the backend and linked with IoT sensor status.
+              This bay status is saved to Supabase. IoT sensor updates will be connected
+              during the hardware integration phase.
             </p>
           </div>
         </div>

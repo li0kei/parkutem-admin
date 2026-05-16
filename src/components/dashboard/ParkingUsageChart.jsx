@@ -2,6 +2,8 @@
 // IMPORTS
 // =====================================================
 
+import { useEffect, useMemo, useState } from "react"
+
 import {
   CartesianGrid,
   Legend,
@@ -13,7 +15,30 @@ import {
   YAxis,
 } from "recharts"
 
-import { parkingUsageData } from "../../data/dashboardData"
+import { loadParkingUsageByHourData } from "../../services/adminDashboardService"
+
+// =====================================================
+// EMPTY PARKING USAGE DATA
+// No fake data. Used while loading/fallback.
+// =====================================================
+
+const emptyParkingUsageData = [
+  { hour: "7AM", entries: 0, exits: 0 },
+  { hour: "8AM", entries: 0, exits: 0 },
+  { hour: "9AM", entries: 0, exits: 0 },
+  { hour: "10AM", entries: 0, exits: 0 },
+  { hour: "11AM", entries: 0, exits: 0 },
+  { hour: "12PM", entries: 0, exits: 0 },
+  { hour: "1PM", entries: 0, exits: 0 },
+  { hour: "2PM", entries: 0, exits: 0 },
+  { hour: "3PM", entries: 0, exits: 0 },
+  { hour: "4PM", entries: 0, exits: 0 },
+  { hour: "5PM", entries: 0, exits: 0 },
+  { hour: "6PM", entries: 0, exits: 0 },
+  { hour: "7PM", entries: 0, exits: 0 },
+  { hour: "8PM", entries: 0, exits: 0 },
+  { hour: "9PM", entries: 0, exits: 0 },
+]
 
 // =====================================================
 // CUSTOM TOOLTIP
@@ -45,17 +70,114 @@ function CustomTooltip({ active, payload, label }) {
 // =====================================================
 
 function ParkingUsageChart() {
+  const [chartData, setChartData] = useState(emptyParkingUsageData)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
+  // =====================================================
+  // LOAD REAL PARKING USAGE
+  // =====================================================
+
+  async function loadChartData() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realData = await loadParkingUsageByHourData()
+
+      setChartData(realData)
+    } catch (error) {
+      console.error("Failed to load parking usage by hour:", error)
+
+      setLoadError(
+        error.message || "Unable to load parking usage from Supabase."
+      )
+
+      setChartData(emptyParkingUsageData)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
+  useEffect(() => {
+    loadChartData()
+  }, [])
+
+  // =====================================================
+  // DERIVED VALUES
+  // =====================================================
+
+  const totalEntries = useMemo(() => {
+    return chartData.reduce((total, item) => total + Number(item.entries || 0), 0)
+  }, [chartData])
+
+  const totalExits = useMemo(() => {
+    return chartData.reduce((total, item) => total + Number(item.exits || 0), 0)
+  }, [chartData])
+
+  const maxValue = useMemo(() => {
+    const highest = chartData.reduce((max, item) => {
+      return Math.max(max, Number(item.entries || 0), Number(item.exits || 0))
+    }, 0)
+
+    return Math.max(5, highest + 2)
+  }, [chartData])
+
+  // =====================================================
+  // RENDER
+  // =====================================================
+
   return (
     <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-5">
-        <h3 className="text-lg font-black text-slate-950">
-          Parking Usage by Hour
-        </h3>
+      <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div>
+          <h3 className="text-lg font-black text-slate-950">
+            Parking Usage by Hour
+          </h3>
 
-        <p className="mt-1 text-sm leading-6 text-slate-500">
-          Number of vehicles entering and exiting campus by hour.
-        </p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Today&apos;s ANPR entry and exit logs grouped by hour.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-cyan-50 px-4 py-2 text-right">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-700">
+              Entries
+            </p>
+
+            <p className="text-sm font-black text-slate-950">
+              {totalEntries}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-blue-50 px-4 py-2 text-right">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+              Exits
+            </p>
+
+            <p className="text-sm font-black text-slate-950">
+              {totalExits}
+            </p>
+          </div>
+        </div>
       </div>
+
+      {loadError && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {loadError}
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+          Loading parking usage from ANPR logs...
+        </div>
+      )}
 
       {/* =====================================================
           MOBILE HORIZONTAL SCROLL CHART AREA ONLY
@@ -68,7 +190,7 @@ function ParkingUsageChart() {
         <div className="h-80 w-[760px] lg:w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
-              data={parkingUsageData}
+              data={chartData}
               margin={{
                 top: 16,
                 right: 30,
@@ -94,16 +216,13 @@ function ParkingUsageChart() {
                 axisLine={false}
                 width={40}
                 tickMargin={8}
-                domain={[0, 120]}
+                domain={[0, maxValue]}
+                allowDecimals={false}
               />
 
               <Tooltip content={<CustomTooltip />} />
 
-              <Legend
-                verticalAlign="bottom"
-                height={36}
-                iconType="circle"
-              />
+              <Legend verticalAlign="bottom" height={36} iconType="circle" />
 
               <Line
                 type="monotone"

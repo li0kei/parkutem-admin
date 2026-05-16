@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   CheckCircle,
   CircleDollarSign,
@@ -20,24 +20,75 @@ import PaymentDetailModal from "../components/modals/PaymentDetailModal"
 
 import {
   paymentMethodOptions,
-  payments,
   paymentStatusOptions,
   paymentTypeOptions,
   paymentUserTypeOptions,
 } from "../data/payments"
+
+import {
+  loadAdminPayments,
+  subscribeToPayments,
+  unsubscribeFromPayments,
+} from "../services/adminPaymentService"
+
 
 // =====================================================
 // WALLET & PAYMENT TRANSACTIONS PAGE
 // =====================================================
 
 function Payments() {
-  const [paymentData, setPaymentData] = useState(payments)
+  const [paymentData, setPaymentData] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedType, setSelectedType] = useState("All Types")
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedUserType, setSelectedUserType] = useState("All Users")
   const [selectedMethod, setSelectedMethod] = useState("All Methods")
   const [selectedPayment, setSelectedPayment] = useState(null)
+
+// =====================================================
+// LOAD PAYMENTS FROM SUPABASE
+// =====================================================
+
+async function loadPayments() {
+  setIsLoading(true)
+  setLoadError("")
+
+  try {
+    const realPayments = await loadAdminPayments()
+
+    setPaymentData(realPayments)
+  } catch (error) {
+    console.error("Failed to load payments:", error)
+
+    setLoadError(
+      error.message ||
+        "Unable to load payment transactions from Supabase. Please check your connection or admin access."
+    )
+
+    setPaymentData([])
+  } finally {
+    setIsLoading(false)
+  }
+}
+
+// =====================================================
+// INITIAL LOAD + REALTIME SUBSCRIPTION
+// =====================================================
+
+useEffect(() => {
+  loadPayments()
+
+  const channel = subscribeToPayments(() => {
+    loadPayments()
+  })
+
+  return () => {
+    unsubscribeFromPayments(channel)
+  }
+}, [])
 
   // =====================================================
   // FILTERED PAYMENTS
@@ -90,48 +141,45 @@ function Payments() {
   // =====================================================
 
   const summary = useMemo(() => {
-    const successfulRevenue = paymentData
-      .filter((payment) => payment.amount > 0)
-      .filter(
-        (payment) => payment.status === "Success" || payment.status === "Paid"
-      )
-      .reduce((total, payment) => total + payment.amount, 0)
+  const successfulRevenue = paymentData
+    .filter((payment) => payment.amount > 0)
+    .filter((payment) => payment.status === "Paid")
+    .reduce((total, payment) => total + payment.amount, 0)
 
-    const reservationRevenue = paymentData
-      .filter((payment) => payment.type === "Reservation Fee")
-      .filter((payment) => payment.status === "Success")
-      .reduce((total, payment) => total + payment.amount, 0)
+  const reservationRevenue = paymentData
+    .filter((payment) => payment.type === "Reservation Fee")
+    .filter((payment) => payment.status === "Paid")
+    .reduce((total, payment) => total + payment.amount, 0)
 
-    const parkingRevenue = paymentData
-      .filter((payment) => payment.type === "Parking Fee")
-      .filter((payment) => payment.status === "Success")
-      .reduce((total, payment) => total + payment.amount, 0)
+  const parkingRevenue = paymentData
+    .filter((payment) => payment.type === "After 7PM Parking Fee")
+    .filter((payment) => payment.status === "Paid")
+    .reduce((total, payment) => total + payment.amount, 0)
 
-    const guestRevenue = paymentData
-      .filter((payment) => payment.type === "Guest Parking Fee")
-      .filter((payment) => payment.status === "Paid")
-      .reduce((total, payment) => total + payment.amount, 0)
+  const guestRevenue = paymentData
+    .filter((payment) => payment.type === "Guest Parking Fee")
+    .filter((payment) => payment.status === "Paid")
+    .reduce((total, payment) => total + payment.amount, 0)
 
-    const refunds = paymentData
-      .filter((payment) => payment.type === "Refund")
-      .reduce((total, payment) => total + Math.abs(payment.amount), 0)
+  const refunds = paymentData
+    .filter((payment) => payment.status === "Refunded")
+    .reduce((total, payment) => total + Math.abs(payment.amount), 0)
 
-    return {
-      total: paymentData.length,
-      successful: paymentData.filter(
-        (payment) => payment.status === "Success" || payment.status === "Paid"
-      ).length,
-      pending: paymentData.filter((payment) => payment.status === "Pending")
-        .length,
-      failed: paymentData.filter((payment) => payment.status === "Failed")
-        .length,
-      successfulRevenue,
-      reservationRevenue,
-      parkingRevenue,
-      guestRevenue,
-      refunds,
-    }
-  }, [paymentData])
+  return {
+    total: paymentData.length,
+    successful: paymentData.filter((payment) => payment.status === "Paid")
+      .length,
+    pending: paymentData.filter((payment) => payment.status === "Pending")
+      .length,
+    failed: paymentData.filter((payment) => payment.status === "Failed")
+      .length,
+    successfulRevenue,
+    reservationRevenue,
+    parkingRevenue,
+    guestRevenue,
+    refunds,
+  }
+}, [paymentData])
 
   // =====================================================
   // UPDATE PAYMENT STATUS
@@ -174,6 +222,23 @@ function Payments() {
 
   return (
     <div className="space-y-6">
+
+    {/* =====================================================
+        SUPABASE LOAD STATUS
+        ===================================================== */}
+
+        {loadError && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+            {loadError}
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+            Loading real payment transactions from Supabase...
+          </div>
+        )}
+
       {/* =====================================================
           SUMMARY PANEL
           ===================================================== */}
@@ -350,7 +415,7 @@ function Payments() {
           </div>
 
           <span className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700">
-            Dummy Payment Records
+            Supabase Records
           </span>
         </div>
 
@@ -588,7 +653,7 @@ function RevenueCard({ label, amount, description, negative = false }) {
 function TypePill({ type }) {
   const styles = {
     "Reservation Fee": "bg-cyan-50 text-cyan-700",
-    "Parking Fee": "bg-blue-50 text-blue-700",
+    "After 7PM Parking Fee": "bg-blue-50 text-blue-700",
     "Guest Parking Fee": "bg-violet-50 text-violet-700",
     "Wallet Top Up": "bg-emerald-50 text-emerald-700",
     Refund: "bg-orange-50 text-orange-700",

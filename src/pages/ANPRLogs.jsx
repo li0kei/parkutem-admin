@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   CarFront,
   CircleCheck,
@@ -24,29 +24,81 @@ import {
   userTypeOptions,
 } from "../data/anprLogs"
 
+import {
+  loadAdminAnprLogs,
+  subscribeToAnprLogs,
+  unsubscribeFromAnprLogs,
+} from "../services/adminAnprLogService"
+
 // =====================================================
 // ANPR LOGS PAGE
 // =====================================================
 
 function ANPRLogs() {
+  const [logData, setLogData] = useState(anprLogs)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedGate, setSelectedGate] = useState("All Gates")
 
   // =====================================================
+  // LOAD ANPR LOGS FROM SUPABASE
+  // =====================================================
+
+  async function loadLogs() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realLogs = await loadAdminAnprLogs()
+
+      setLogData(realLogs)
+    } catch (error) {
+      console.error("Failed to load ANPR logs:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to load ANPR logs from Supabase. Please check table access or schema."
+      )
+
+      setLogData(anprLogs)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadLogs()
+
+    const channel = subscribeToAnprLogs(() => {
+      loadLogs()
+    })
+
+    return () => {
+      unsubscribeFromAnprLogs(channel)
+    }
+  }, [])
+
+  // =====================================================
   // FILTERED LOGS
   // =====================================================
 
   const filteredLogs = useMemo(() => {
-    return anprLogs.filter((log) => {
+    return logData.filter((log) => {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
-        log.plateNumber.toLowerCase().includes(searchValue) ||
-        log.ownerName.toLowerCase().includes(searchValue) ||
-        log.gateLocation.toLowerCase().includes(searchValue) ||
-        log.parkingZone.toLowerCase().includes(searchValue)
+        String(log.plateNumber || "").toLowerCase().includes(searchValue) ||
+        String(log.ownerName || "").toLowerCase().includes(searchValue) ||
+        String(log.gateLocation || "").toLowerCase().includes(searchValue) ||
+        String(log.parkingZone || "").toLowerCase().includes(searchValue)
 
       const matchesStatus =
         selectedStatus === "All Status" || log.status === selectedStatus
@@ -59,7 +111,7 @@ function ANPRLogs() {
 
       return matchesSearch && matchesStatus && matchesUserType && matchesGate
     })
-  }, [searchTerm, selectedStatus, selectedUserType, selectedGate])
+  }, [logData, searchTerm, selectedStatus, selectedUserType, selectedGate])
 
   // =====================================================
   // SUMMARY COUNTS
@@ -67,14 +119,16 @@ function ANPRLogs() {
 
   const summary = useMemo(() => {
     return {
-      total: anprLogs.length,
-      approved: anprLogs.filter((log) => log.status === "Approved").length,
-      flagged: anprLogs.filter((log) => log.status === "Flagged").length,
-      unknown: anprLogs.filter((log) => log.status === "Unknown").length,
-      guests: anprLogs.filter((log) => log.userType === "Guest").length,
-      active: anprLogs.filter((log) => log.exitTime === "-").length,
+      total: logData.length,
+      approved: logData.filter((log) => log.status === "Approved").length,
+      flagged: logData.filter((log) => log.status === "Flagged").length,
+      unknown: logData.filter((log) => log.status === "Unknown").length,
+      guests: logData.filter((log) => log.userType === "Guest").length,
+      active: logData.filter(
+        (log) => log.exitTime === "-" && log.status === "Approved"
+      ).length,
     }
-  }, [])
+  }, [logData])
 
   // =====================================================
   // RESET FILTERS
@@ -89,6 +143,23 @@ function ANPRLogs() {
 
   return (
     <div className="space-y-6">
+
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
+
+            {loadError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                {loadError}
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+                Loading ANPR logs from Supabase...
+              </div>
+            )}
+
       {/* =====================================================
           SUMMARY PANEL
           ===================================================== */}
@@ -222,7 +293,7 @@ function ANPRLogs() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Showing {filteredLogs.length} of {anprLogs.length} vehicle logs.
+             Showing {filteredLogs.length} of {logData.length} vehicle logs.
             </p>
           </div>
 
@@ -329,7 +400,7 @@ function ANPRLogs() {
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Showing {filteredLogs.length} of {anprLogs.length} logs.
+            Showing {filteredLogs.length} of {logData.length} logs.
           </p>
         </div>
 

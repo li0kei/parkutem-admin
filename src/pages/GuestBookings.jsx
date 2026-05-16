@@ -2,10 +2,9 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   CalendarCheck,
-  Car,
   CheckCircle,
   Clock3,
   CreditCard,
@@ -13,8 +12,6 @@ import {
   Radio,
   Receipt,
   Timer,
-  User,
-  XCircle,
 } from "lucide-react"
 
 import FilterSelect from "../components/common/FilterSelect"
@@ -24,18 +21,26 @@ import GuestBookingModal from "../components/modals/GuestBookingModal"
 
 import {
   guestAnprAccessOptions,
-  guestBookings,
   guestBookingStatusOptions,
   guestEntryStatusOptions,
   guestPaymentStatusOptions,
 } from "../data/guestBookings"
+
+import {
+  loadAdminGuestBookings,
+  subscribeToGuestBookings,
+  unsubscribeFromGuestBookings,
+} from "../services/adminGuestBookingService"
 
 // =====================================================
 // GUEST BOOKING MANAGEMENT PAGE
 // =====================================================
 
 function GuestBookings() {
-  const [bookingData, setBookingData] = useState(guestBookings)
+  const [bookingData, setBookingData] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedBookingStatus, setSelectedBookingStatus] =
     useState("All Status")
@@ -44,6 +49,48 @@ function GuestBookings() {
   const [selectedAnprAccess, setSelectedAnprAccess] = useState("All ANPR")
   const [selectedEntryStatus, setSelectedEntryStatus] = useState("All Entry")
   const [selectedBooking, setSelectedBooking] = useState(null)
+
+  // =====================================================
+  // LOAD GUEST BOOKINGS FROM SUPABASE
+  // =====================================================
+
+  async function loadGuestBookings() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realBookings = await loadAdminGuestBookings()
+
+      setBookingData(realBookings)
+    } catch (error) {
+      console.error("Failed to load guest bookings:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to load guest bookings from Supabase. Showing fallback data."
+      )
+
+      setBookingData([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadGuestBookings()
+
+    const channel = subscribeToGuestBookings(() => {
+      loadGuestBookings()
+    })
+
+    return () => {
+      unsubscribeFromGuestBookings(channel)
+    }
+  }, [])
 
   // =====================================================
   // FILTERED BOOKINGS
@@ -99,21 +146,27 @@ function GuestBookings() {
       .reduce((total, booking) => total + booking.parkingFee, 0)
 
     return {
-      total: bookingData.length,
-      paid: bookingData.filter((booking) => booking.paymentStatus === "Paid")
-        .length,
-      upcoming: bookingData.filter(
-        (booking) => booking.bookingStatus === "Upcoming"
-      ).length,
-      active: bookingData.filter((booking) => booking.bookingStatus === "Active")
-        .length,
-      anprEnabled: bookingData.filter(
-        (booking) => booking.anprAccess === "Enabled"
-      ).length,
-      entered: bookingData.filter((booking) => booking.entryStatus === "Entered")
-        .length,
-      guestRevenue,
-    }
+        total: bookingData.length,
+        paid: bookingData.filter((booking) => booking.paymentStatus === "Paid")
+          .length,
+
+        confirmed: bookingData.filter(
+          (booking) => booking.bookingStatus === "Confirmed"
+        ).length,
+
+        anprActive: bookingData.filter(
+          (booking) => booking.anprAccess === "Enabled"
+        ).length,
+
+        anprEnabled: bookingData.filter(
+          (booking) => booking.anprAccess === "Enabled"
+        ).length,
+
+        entered: bookingData.filter((booking) => booking.entryStatus === "Entered")
+          .length,
+
+        guestRevenue,
+      }
   }, [bookingData])
 
   // =====================================================
@@ -191,12 +244,28 @@ function GuestBookings() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* =====================================================
-          SUMMARY PANEL
-          ===================================================== */}
+  <div className="space-y-6">
+    {/* =====================================================
+        SUPABASE LOAD STATUS
+        ===================================================== */}
 
-      <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
+    {loadError && (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+        {loadError}
+      </div>
+    )}
+
+    {isLoading && (
+      <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+        Loading real guest bookings from Supabase...
+      </div>
+    )}
+
+    {/* =====================================================
+        SUMMARY PANEL
+        ===================================================== */}
+
+    <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
         <div className="relative p-4 sm:p-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.14),transparent_35%)]" />
           <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:34px_34px]" />
@@ -234,15 +303,15 @@ function GuestBookings() {
             />
 
             <SummaryCard
-              label="Upcoming"
-              value={summary.upcoming}
+              label="Confirmed"
+              value={summary.confirmed}
               icon={Clock3}
               className="bg-amber-300/10 text-amber-300"
             />
 
             <SummaryCard
-              label="Active"
-              value={summary.active}
+              label="ANPR Active"
+              value={summary.anprActive}
               icon={Timer}
               className="bg-blue-300/10 text-blue-300"
             />
@@ -421,7 +490,9 @@ function GuestBookings() {
                     </p>
 
                     <p className="mt-1 text-xs font-semibold text-slate-400">
-                      {booking.bayNumber} • {booking.zone}
+                      {booking.bayNumber
+                      ? `${booking.bayNumber} • ${booking.zone}`
+                      : booking.parkingAllocation}
                     </p>
                   </td>
 
@@ -459,6 +530,12 @@ function GuestBookings() {
 
                   <td className="px-6 py-4">
                     <StatusBadge status={booking.bookingStatus} />
+
+                    {booking.bookingStatus === "Expired" && booking.expiredReason !== "-" && (
+                      <p className="mt-2 text-xs font-bold text-orange-600">
+                        {booking.expiredReason}
+                      </p>
+                    )}
                   </td>
 
                   <td className="px-6 py-4">
@@ -513,7 +590,15 @@ function GuestBookings() {
                 </p>
               </div>
 
-              <StatusBadge status={booking.bookingStatus} />
+               <div className="text-right">
+                <StatusBadge status={booking.bookingStatus} />
+
+                {booking.bookingStatus === "Expired" && booking.expiredReason !== "-" && (
+                  <p className="mt-2 text-xs font-bold text-orange-600">
+                    {booking.expiredReason}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">

@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
   BadgeCheck,
@@ -30,17 +30,68 @@ import {
   issueTypes,
 } from "../data/issues"
 
+import {
+  loadAdminSupportIssues,
+  subscribeToSupportIssues,
+  unsubscribeFromSupportIssues,
+  updateSupportIssueStatus,
+} from "../services/adminIssueService"
+
 // =====================================================
 // ISSUE / SUPPORT MANAGEMENT PAGE
 // =====================================================
 
 function Issues() {
   const [tickets, setTickets] = useState(issueTickets)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedType, setSelectedType] = useState("All Types")
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedPriority, setSelectedPriority] = useState("All Priority")
   const [selectedTicket, setSelectedTicket] = useState(null)
+
+    // =====================================================
+  // LOAD SUPPORT ISSUES FROM SUPABASE
+  // =====================================================
+
+  async function loadIssues() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realIssues = await loadAdminSupportIssues()
+
+      setTickets(realIssues)
+    } catch (error) {
+      console.error("Failed to load support issues:", error)
+
+      setLoadError(
+        error.message || "Unable to load support issues from Supabase."
+      )
+
+      setTickets(issueTickets)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadIssues()
+
+    const channel = subscribeToSupportIssues(() => {
+      loadIssues()
+    })
+
+    return () => {
+      unsubscribeFromSupportIssues(channel)
+    }
+  }, [])
 
   // =====================================================
   // FILTERED TICKETS
@@ -48,11 +99,14 @@ function Issues() {
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((ticket) => {
+
+      const searchValue = searchTerm.toLowerCase()
+
       const searchMatch =
-        ticket.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.reportedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.relatedPlate.toLowerCase().includes(searchTerm.toLowerCase())
+        String(ticket.id || "").toLowerCase().includes(searchValue) ||
+        String(ticket.title || "").toLowerCase().includes(searchValue) ||
+        String(ticket.reportedBy || "").toLowerCase().includes(searchValue) ||
+        String(ticket.relatedPlate || "").toLowerCase().includes(searchValue)
 
       const typeMatch =
         selectedType === "All Types" || ticket.type === selectedType
@@ -89,18 +143,28 @@ function Issues() {
   // UPDATE STATUS
   // =====================================================
 
-  function handleStatusChange(ticketId, newStatus) {
-    setTickets((currentTickets) =>
-      currentTickets.map((ticket) =>
-        ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
-      )
-    )
+  async function handleStatusChange(ticketId, newStatus) {
+    try {
+      const updatedTicket = await updateSupportIssueStatus(ticketId, newStatus)
 
-    setSelectedTicket((currentTicket) =>
-      currentTicket && currentTicket.id === ticketId
-        ? { ...currentTicket, status: newStatus }
-        : currentTicket
-    )
+      setTickets((currentTickets) =>
+        currentTickets.map((ticket) =>
+          ticket.id === ticketId ? updatedTicket : ticket
+        )
+      )
+
+      setSelectedTicket((currentTicket) =>
+        currentTicket && currentTicket.id === ticketId
+          ? updatedTicket
+          : currentTicket
+      )
+    } catch (error) {
+      console.error("Failed to update support issue:", error)
+
+      setLoadError(
+        error.message || "Unable to update support issue status in Supabase."
+      )
+    }
   }
 
   // =====================================================
@@ -116,6 +180,23 @@ function Issues() {
 
   return (
     <div className="space-y-6">
+
+        {/* =====================================================
+            SUPABASE LOAD STATUS
+            ===================================================== */}
+
+            {loadError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                {loadError}
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+                Loading support issues from Supabase...
+              </div>
+            )}
+      
       {/* =====================================================
           ISSUES OVERVIEW
           ===================================================== */}
@@ -266,7 +347,7 @@ function Issues() {
           </div>
 
           <span className="w-fit rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-700">
-            Dummy Actions
+            Supabase Support Tickets
           </span>
         </div>
 
@@ -573,7 +654,7 @@ function IssueDetailModal({ ticket, onClose, onStatusChange }) {
                 Update Ticket Status
               </p>
               <p className="mt-1 text-lg font-black text-white">
-                Dummy action only
+                Saved to Supabase
               </p>
             </div>
 

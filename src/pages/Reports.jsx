@@ -2,20 +2,22 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
-
+import { useEffect, useMemo, useState } from "react"
 import {
   Activity,
   AlertTriangle,
   BarChart3,
+  CalendarCheck,
   CalendarDays,
+  Car,
   ChevronDown,
-  CircleDollarSign,
   Download,
-  FileText,
+  LifeBuoy,
   Radio,
+  RefreshCw,
   ScanLine,
-  Users,
+  TrendingUp,
+  Wallet,
 } from "lucide-react"
 
 import {
@@ -36,604 +38,609 @@ import {
   YAxis,
 } from "recharts"
 
-import StatusBadge from "../components/common/StatusBadge"
+import { emptyReportsData } from "../data/reportsData"
 
 import {
-  analyticsSummary,
-  anprDetectionData,
-  conversionData,
-  guestStatusReportData,
-  liveActivityData,
-  liveAlertsData,
-  liveParkingFlowData,
-  reservationStatusReportData,
-  revenueBreakdownReportData,
-  revenueTrendData,
-  trafficByDayData,
-  trafficByMonthData,
-  zoneOccupancyReportData,
-} from "../data/reportsData"
+  loadAdminReportsData,
+  subscribeToReportsData,
+  unsubscribeFromReportsData,
+} from "../services/adminReportsService"
 
 // =====================================================
 // CONSTANTS
 // =====================================================
 
 const tabs = ["Overview", "Traffic", "Booking Flow", "Monthly", "Live"]
-const viewModes = ["Day", "Week", "Month"]
-const COLORS = ["#06b6d4", "#2563eb", "#14b8a6", "#f97316", "#8b5cf6"]
 
-const monthOptions = [
-  { value: 1, label: "January" },
-  { value: 2, label: "February" },
-  { value: 3, label: "March" },
-  { value: 4, label: "April" },
-  { value: 5, label: "May" },
-  { value: 6, label: "June" },
-  { value: 7, label: "July" },
-  { value: 8, label: "August" },
-  { value: 9, label: "September" },
-  { value: 10, label: "October" },
-  { value: 11, label: "November" },
-  { value: 12, label: "December" },
+const months = [
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
 ]
-const yearOptions = [2025, 2026, 2027]
+
+const years = ["2025", "2026", "2027"]
+
+const chartColors = [
+  "#06b6d4",
+  "#2563eb",
+  "#14b8a6",
+  "#f97316",
+  "#8b5cf6",
+  "#ef4444",
+]
 
 // =====================================================
-// REPORTS / ANALYTICS PAGE
+// REPORTS PAGE
 // =====================================================
 
 function Reports() {
-    const [activeTab, setActiveTab] = useState("Overview")
-    const [viewMode, setViewMode] = useState("Week")
-    const [startDate, setStartDate] = useState("2026-05-11")
-    const [endDate, setEndDate] = useState("2026-05-17")
-    const [selectedMonth, setSelectedMonth] = useState(5)
-    const [selectedYear, setSelectedYear] = useState(2026)
-    const [compareMonth, setCompareMonth] = useState(4)
-    const [compareYear, setCompareYear] = useState(2026)
-    const [downloadOpen, setDownloadOpen] = useState(false)
+  const currentYear = new Date().getFullYear().toString()
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0")
+
+  const [activeTab, setActiveTab] = useState("Overview")
+  const [trafficView, setTrafficView] = useState("Daily")
+  const [downloadOpen, setDownloadOpen] = useState(false)
+
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth)
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [compareMonth, setCompareMonth] = useState(
+    currentMonth === "01"
+      ? "12"
+      : String(Number(currentMonth) - 1).padStart(2, "0")
+  )
+  const [compareYear, setCompareYear] = useState(
+    currentMonth === "01" ? String(Number(currentYear) - 1) : currentYear
+  )
+
+  const [reportsData, setReportsData] = useState(emptyReportsData)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
+  const {
+    analyticsSummary,
+    anprDetectionData,
+    conversionData,
+    guestStatusReportData,
+    liveActivityData,
+    liveAlertsData,
+    liveParkingFlowData,
+    reservationStatusReportData,
+    revenueBreakdownReportData,
+    revenueTrendData,
+    trafficByDayData,
+    trafficByMonthData,
+    zoneOccupancyReportData,
+    monthlySummary,
+    compareSummary,
+    monthlyTrafficData,
+    monthlyRevenueData,
+    monthlyComparisonChartData,
+  } = reportsData
 
   // =====================================================
-  // SELECTED TRAFFIC DATA
+  // DERIVED DATA
   // =====================================================
 
   const selectedTrafficData = useMemo(() => {
-    if (viewMode === "Month") {
-      return trafficByMonthData
+    return trafficView === "Monthly" ? trafficByMonthData : trafficByDayData
+  }, [trafficView, trafficByDayData, trafficByMonthData])
+
+  const selectedMonthLabel = useMemo(() => {
+    const month = months.find((item) => item.value === selectedMonth)
+    return month?.label || "Month"
+  }, [selectedMonth])
+
+  const compareMonthLabel = useMemo(() => {
+    const month = months.find((item) => item.value === compareMonth)
+    return month?.label || "Month"
+  }, [compareMonth])
+
+  const currentSummary =
+    activeTab === "Monthly" ? monthlySummary : analyticsSummary
+
+  // =====================================================
+  // LOAD REPORTS DATA FROM SUPABASE
+  // =====================================================
+
+  async function loadReportsData() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realReportsData = await loadAdminReportsData({
+        startDate,
+        endDate,
+        selectedMonth,
+        selectedYear,
+        compareMonth,
+        compareYear,
+      })
+
+      setReportsData(realReportsData)
+    } catch (error) {
+      console.error("Failed to load reports data:", error)
+
+      setLoadError(
+        error.message || "Unable to load reports data from Supabase."
+      )
+
+      setReportsData(emptyReportsData)
+    } finally {
+      setIsLoading(false)
     }
-
-    return trafficByDayData
-  }, [viewMode])
-
-// =====================================================
-// MONTHLY ANALYTICS DATA
-// =====================================================
-
-const selectedMonthLabel = useMemo(() => {
-  return (
-    monthOptions.find((month) => month.value === Number(selectedMonth))?.label ||
-    "May"
-  )
-}, [selectedMonth])
-
-const compareMonthLabel = useMemo(() => {
-  return (
-    monthOptions.find((month) => month.value === Number(compareMonth))?.label ||
-    "April"
-  )
-}, [compareMonth])
-
-const monthlySummary = useMemo(() => {
-  const monthNumber = Number(selectedMonth)
-  const yearFactor = Number(selectedYear) - 2025
-
-  return {
-    totalVehicles: 7200 + monthNumber * 820 + yearFactor * 420,
-    averageOccupancy: `${Math.min(92, 54 + monthNumber * 3)}%`,
-    totalRevenue: Number((680 + monthNumber * 118 + yearFactor * 80).toFixed(2)),
-    reservations: 110 + monthNumber * 26 + yearFactor * 12,
-    guestBookings: 38 + monthNumber * 9 + yearFactor * 6,
-    anprAccuracy: `${Math.min(99.2, 94 + monthNumber * 0.38).toFixed(1)}%`,
-    flaggedDetections: 8 + monthNumber * 2,
-    activeIssues: Math.max(3, 16 - monthNumber + yearFactor),
   }
-}, [selectedMonth, selectedYear])
-
-const compareSummary = useMemo(() => {
-  const monthNumber = Number(compareMonth)
-  const yearFactor = Number(compareYear) - 2025
-
-  return {
-    totalVehicles: 7200 + monthNumber * 820 + yearFactor * 420,
-    averageOccupancy: `${Math.min(92, 54 + monthNumber * 3)}%`,
-    totalRevenue: Number((680 + monthNumber * 118 + yearFactor * 80).toFixed(2)),
-    reservations: 110 + monthNumber * 26 + yearFactor * 12,
-    guestBookings: 38 + monthNumber * 9 + yearFactor * 6,
-    anprAccuracy: `${Math.min(99.2, 94 + monthNumber * 0.38).toFixed(1)}%`,
-    flaggedDetections: 8 + monthNumber * 2,
-    activeIssues: Math.max(3, 16 - monthNumber + yearFactor),
-  }
-}, [compareMonth, compareYear])
-
-const monthlyTrafficData = useMemo(() => {
-  const monthNumber = Number(selectedMonth)
-
-  return [
-    {
-      label: "Week 1",
-      entries: 1800 + monthNumber * 80,
-      exits: 1720 + monthNumber * 72,
-      occupancy: 58 + monthNumber * 2,
-    },
-    {
-      label: "Week 2",
-      entries: 2050 + monthNumber * 92,
-      exits: 1980 + monthNumber * 85,
-      occupancy: 62 + monthNumber * 2,
-    },
-    {
-      label: "Week 3",
-      entries: 2280 + monthNumber * 96,
-      exits: 2160 + monthNumber * 90,
-      occupancy: 66 + monthNumber * 2,
-    },
-    {
-      label: "Week 4",
-      entries: 2450 + monthNumber * 104,
-      exits: 2380 + monthNumber * 96,
-      occupancy: 70 + monthNumber * 2,
-    },
-  ]
-}, [selectedMonth])
-
-const monthlyRevenueData = useMemo(() => {
-  const monthNumber = Number(selectedMonth)
-
-  return [
-    {
-      label: "Week 1",
-      reservation: 140 + monthNumber * 10,
-      parking: 90 + monthNumber * 8,
-      guest: 80 + monthNumber * 7,
-      refund: 5,
-    },
-    {
-      label: "Week 2",
-      reservation: 170 + monthNumber * 12,
-      parking: 115 + monthNumber * 10,
-      guest: 95 + monthNumber * 8,
-      refund: 0,
-    },
-    {
-      label: "Week 3",
-      reservation: 190 + monthNumber * 13,
-      parking: 135 + monthNumber * 11,
-      guest: 120 + monthNumber * 9,
-      refund: 10,
-    },
-    {
-      label: "Week 4",
-      reservation: 210 + monthNumber * 14,
-      parking: 155 + monthNumber * 12,
-      guest: 140 + monthNumber * 10,
-      refund: 5,
-    },
-  ]
-}, [selectedMonth])
-
-// =====================================================
-// CURRENT SUMMARY BASED ON ACTIVE TAB
-// =====================================================
-
-const currentSummary = activeTab === "Monthly" ? monthlySummary : analyticsSummary
-
-// =====================================================
-// MONTHLY COMPARISON DATA
-// =====================================================
-
-const monthlyComparisonChartData = useMemo(() => {
-  return [
-    {
-      metric: "Vehicles",
-      current: monthlySummary.totalVehicles,
-      compare: compareSummary.totalVehicles,
-    },
-    {
-      metric: "Revenue",
-      current: monthlySummary.totalRevenue,
-      compare: compareSummary.totalRevenue,
-    },
-    {
-      metric: "Reservations",
-      current: monthlySummary.reservations,
-      compare: compareSummary.reservations,
-    },
-    {
-      metric: "Guests",
-      current: monthlySummary.guestBookings,
-      compare: compareSummary.guestBookings,
-    },
-  ]
-}, [monthlySummary, compareSummary])
 
   // =====================================================
-  // DOWNLOAD HANDLER
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
   // =====================================================
 
-  function handleDownload(format) {
+  useEffect(() => {
+    loadReportsData()
+
+    const channel = subscribeToReportsData(() => {
+      loadReportsData()
+    })
+
+    return () => {
+      unsubscribeFromReportsData(channel)
+    }
+  }, [
+    startDate,
+    endDate,
+    selectedMonth,
+    selectedYear,
+    compareMonth,
+    compareYear,
+  ])
+
+  // =====================================================
+  // DOWNLOAD REPORT
+  // =====================================================
+
+  function handleDownloadReport(format) {
     setDownloadOpen(false)
 
-    if (format === "CSV") {
-      const rows = [
-        ["Metric", "Value"],
-        ["Total Vehicles", analyticsSummary.totalVehicles],
-        ["Average Occupancy", analyticsSummary.averageOccupancy],
-        ["Total Revenue", `RM ${analyticsSummary.totalRevenue}`],
-        ["Reservations", analyticsSummary.reservations],
-        ["Guest Bookings", analyticsSummary.guestBookings],
-        ["ANPR Accuracy", analyticsSummary.anprAccuracy],
-        ["Flagged Detections", analyticsSummary.flaggedDetections],
-      ]
+    const rows = [
+      ["Metric", "Value"],
+      ["Total Vehicles", currentSummary.totalVehicles],
+      ["Average Occupancy", currentSummary.averageOccupancy],
+      ["Total Revenue", `RM ${formatMoney(currentSummary.totalRevenue)}`],
+      ["Reservations", currentSummary.reservations],
+      ["Guest Bookings", currentSummary.guestBookings],
+      ["ANPR Accuracy", currentSummary.anprAccuracy],
+      ["Flagged Detections", currentSummary.flaggedDetections],
+      ["Active Issues", currentSummary.activeIssues],
+    ]
 
-      const csvContent = rows.map((row) => row.join(",")).join("\n")
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const url = URL.createObjectURL(blob)
+    const csv = rows.map((row) => row.join(",")).join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
 
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `parkutem-report-${startDate}-to-${endDate}.csv`
-      link.click()
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `parkutem-${activeTab.toLowerCase()}-report.${format}`
+    link.click()
 
-      URL.revokeObjectURL(url)
-      return
-    }
-
-    alert(`${format} export is a frontend placeholder for now.`)
+    URL.revokeObjectURL(url)
   }
+
+  // =====================================================
+  // RENDER
+  // =====================================================
 
   return (
     <div className="space-y-6">
       {/* =====================================================
-          ANALYTICS CONTROL BAR
+          LOAD STATUS
           ===================================================== */}
 
-   <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur">
-  <div className="flex items-center justify-between gap-3 overflow-visible pb-1">
-    {/* =====================================================
-        TAB BUTTONS
-        ===================================================== */}
-
-    <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-      {tabs.map((tab) => (
-        <button
-          key={tab}
-          type="button"
-          onClick={() => setActiveTab(tab)}
-          className={`shrink-0 rounded-2xl px-4 py-3 text-sm font-black transition ${
-            activeTab === tab
-              ? "bg-slate-950 text-white shadow-sm"
-              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-          }`}
-        >
-          {tab}
-        </button>
-      ))}
-    </div>
-
-    {/* =====================================================
-        RIGHT CONTROLS
-        ===================================================== */}
-
-    <div className="flex shrink-0 items-center gap-2">
-   {activeTab === "Monthly" && (
-  <>
-    <select
-      value={selectedMonth}
-      onChange={(event) => setSelectedMonth(Number(event.target.value))}
-      className="h-12 w-[110px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-    >
-      {monthOptions.map((month) => (
-        <option key={month.value} value={month.value}>
-          {month.label}
-        </option>
-      ))}
-    </select>
-
-    <select
-      value={selectedYear}
-      onChange={(event) => setSelectedYear(Number(event.target.value))}
-      className="h-12 w-[90px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-    >
-      {yearOptions.map((year) => (
-        <option key={year} value={year}>
-          {year}
-        </option>
-      ))}
-    </select>
-  </>
-)}
-
-      {activeTab !== "Live" && activeTab !== "Monthly" && (
-        <>
-          <DateInput value={startDate} onChange={setStartDate} />
-          <DateInput value={endDate} onChange={setEndDate} />
-
-          <div className="flex h-12 shrink-0 rounded-2xl bg-slate-100 p-1">
-            {viewModes.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                className={`rounded-xl px-4 text-sm font-black transition ${
-                  viewMode === mode
-                    ? "bg-cyan-300 text-slate-950"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-        </>
+      {loadError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {loadError}
+        </div>
       )}
 
-      <div className="relative z-50 shrink-0">
-       <button
-  type="button"
-  onClick={() => setDownloadOpen((prev) => !prev)}
-  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white transition hover:bg-slate-800"
-  aria-label="Download report"
-  title="Download report"
->
-  <Download className="h-5 w-5" />
-</button>
+      {isLoading && (
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+          Loading analytics data from Supabase...
+        </div>
+      )}
 
-        {downloadOpen && (
-  <div className="absolute right-0 top-full z-[999] mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)] ring-1 ring-slate-900/5">
-    {["CSV", "Excel (.xlsx)", "PDF"].map((format) => (
-      <button
-        key={format}
-        type="button"
-        onClick={() => handleDownload(format)}
-        className="block w-full bg-white px-5 py-3 text-left text-sm font-bold text-slate-700 transition hover:bg-cyan-50 hover:text-cyan-700"
-      >
-        {format}
-      </button>
-    ))}
-  </div>
-)}
+      {/* =====================================================
+          HERO PANEL
+          ===================================================== */}
 
-      </div>
-    </div>
-  </div>
-
-  {/* =====================================================
-      PERIOD LABEL
-      ===================================================== */}
-
-  {activeTab === "Monthly" && (
-    <p className="mt-4 text-sm font-semibold text-slate-500">
-      Month: {selectedMonthLabel} {selectedYear}
-    </p>
-  )}
-
-  {activeTab === "Live" && (
-    <p className="mt-4 text-sm font-semibold text-slate-500">
-      Live monitoring mode • Today:{" "}
-      {new Date().toLocaleDateString("en-MY", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })}
-    </p>
-  )}
-
-  {activeTab !== "Monthly" && activeTab !== "Live" && (
-    <p className="mt-4 text-sm font-semibold text-slate-500">
-      {viewMode}: {startDate} → {endDate}
-    </p>
-  )}
-</section>
-
-   {/* =====================================================
-    SUMMARY PANEL
-    ===================================================== */}
-
-{activeTab !== "Live" && (
-  <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
-        <div className="relative p-4 sm:p-6">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.14),transparent_35%)]" />
+      <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
+        <div className="relative p-5 sm:p-7">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.16),transparent_35%)]" />
           <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:34px_34px]" />
 
-          <div className="relative z-10 mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+          <div className="relative z-10 flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
-                ParkUTeM Analytics
+              <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300">
+                Reports & Analytics
               </p>
 
-              <h2 className="mt-2 text-xl font-black leading-tight text-white sm:text-2xl">
-                Reports & System Performance
+              <h2 className="mt-3 text-2xl font-black text-white sm:text-3xl">
+                ParkUTeM Operational Analytics
               </h2>
+
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
+                Analyse guest bookings, payments, reservations, ANPR detections,
+                parking bays, vehicles, users, and support issues using live
+                Supabase data.
+              </p>
             </div>
 
-            <p className="hidden max-w-xl text-sm leading-6 text-slate-300 sm:block">
-              Analyse occupancy, revenue, reservations, guest parking, ANPR
-              detections, and live parking operations.
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={loadReportsData}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white transition hover:bg-white/[0.1]"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDownloadOpen((value) => !value)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-300 sm:w-auto"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+
+                {downloadOpen && (
+                  <div className="absolute right-0 top-14 z-20 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadReport("csv")}
+                      className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      Export CSV
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadReport("txt")}
+                      className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      Export TXT
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="relative z-10 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
-            <SummaryCard
-              label="Vehicles"
-              value={currentSummary.totalVehicles}
-              icon={Activity}
-              className="bg-cyan-300/10 text-cyan-300"
-            />
-
-            <SummaryCard
-              label="Occupancy"
-              value={currentSummary.averageOccupancy}
-              icon={BarChart3}
-              className="bg-blue-300/10 text-blue-300"
-            />
-
-            <SummaryCard
+          <div className="relative z-10 mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <HeroMiniStat
               label="Revenue"
-              value={`RM ${currentSummary.totalRevenue}`}
-              icon={CircleDollarSign}
-              className="bg-emerald-300/10 text-emerald-300"
+              value={`RM ${formatMoney(currentSummary.totalRevenue)}`}
             />
-
-            <SummaryCard
-              label="Reservations"
-              value={currentSummary.reservations}
-              icon={CalendarDays}
-              className="bg-amber-300/10 text-amber-300"
-            />
-
-            <SummaryCard
-              label="Guests"
-              value={currentSummary.guestBookings}
-              icon={Users}
-              className="bg-violet-300/10 text-violet-300"
-            />
-
-            <SummaryCard
-              label="ANPR"
+            <HeroMiniStat
+              label="ANPR Accuracy"
               value={currentSummary.anprAccuracy}
-              icon={ScanLine}
-              className="bg-teal-300/10 text-teal-300"
             />
-
-            <SummaryCard
-              label="Flagged"
-              value={currentSummary.flaggedDetections}
-              icon={Radio}
-              className="bg-red-300/10 text-red-300"
+            <HeroMiniStat
+              label="Guest Bookings"
+              value={currentSummary.guestBookings}
             />
-
-            <SummaryCard
-              label="Issues"
+            <HeroMiniStat
+              label="Active Issues"
               value={currentSummary.activeIssues}
-              icon={FileText}
-              className="bg-orange-300/10 text-orange-300"
             />
           </div>
         </div>
       </section>
-      )}
+
+      {/* =====================================================
+          FILTERS
+          ===================================================== */}
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur">
+        <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+          <DateInput
+            label="Start Date"
+            value={startDate}
+            onChange={setStartDate}
+          />
+
+          <DateInput label="End Date" value={endDate} onChange={setEndDate} />
+
+          <button
+            type="button"
+            onClick={() => {
+              setStartDate("")
+              setEndDate("")
+            }}
+            className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+          >
+            Reset Date
+          </button>
+        </div>
+      </section>
+
+      {/* =====================================================
+          TAB NAVIGATION
+          ===================================================== */}
+
+      <section className="overflow-x-auto rounded-[2rem] border border-slate-200 bg-white/90 p-2 shadow-sm">
+        <div className="flex min-w-max gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
+                activeTab === tab
+                  ? "bg-slate-950 text-white shadow-sm"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* =====================================================
+          SUMMARY CARDS
+          ===================================================== */}
+
+      <SummaryGrid summary={currentSummary} />
 
       {/* =====================================================
           TAB CONTENT
           ===================================================== */}
 
       {activeTab === "Overview" && (
-        <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-          <TrafficChart data={selectedTrafficData} />
-          <RevenueBreakdownChart />
-          <RevenueTrendChart />
-          <LiveActivityPanel />
+        <div className="space-y-6">
+          <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+            <RevenueTrendChart data={revenueTrendData} />
+            <RevenueBreakdownChart data={revenueBreakdownReportData} />
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-2">
+            <ZoneOccupancyChart data={zoneOccupancyReportData} />
+            <AnprDetectionChart data={anprDetectionData} />
+          </section>
         </div>
       )}
 
       {activeTab === "Traffic" && (
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <TrafficChart data={selectedTrafficData} />
-          <ZoneOccupancyChart />
-          <ANPRDetectionChart />
+        <div className="space-y-6">
+          <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <h3 className="text-lg font-black text-slate-950">
+                  Traffic View
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Switch between daily and monthly ANPR traffic.
+                </p>
+              </div>
+
+              <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                {["Daily", "Monthly"].map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    onClick={() => setTrafficView(view)}
+                    className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+                      trafficView === view
+                        ? "bg-white text-cyan-700 shadow-sm"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {view}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <TrafficChart data={selectedTrafficData} title={`${trafficView} Traffic`} />
+
+          <section className="grid gap-6 xl:grid-cols-2">
+            <ZoneOccupancyChart data={zoneOccupancyReportData} />
+            <AnprDetectionChart data={anprDetectionData} />
+          </section>
         </div>
       )}
 
       {activeTab === "Booking Flow" && (
-  <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-    <BookingFlowChart />
-    <ReservationStatusChart />
-    <GuestStatusChart />
-  </div>
-)}
+        <div className="space-y-6">
+          <BookingFlowChart data={conversionData} />
 
-    {activeTab === "Monthly" && (
-  <div className="space-y-6">
-    <div className="grid gap-6 xl:grid-cols-2">
-      <TrafficChart
-        data={monthlyTrafficData}
-        title={`${selectedMonthLabel} ${selectedYear} Traffic Analytics`}
-      />
+          <section className="grid gap-6 xl:grid-cols-2">
+            <StatusPieChart
+              title="Reservation Status"
+              subtitle="Reservation status distribution."
+              data={reservationStatusReportData}
+            />
 
-      <RevenueTrendChart
-        title={`${selectedMonthLabel} ${selectedYear} Revenue Trend`}
-        data={monthlyRevenueData}
-      />
-    </div>
+            <StatusPieChart
+              title="Guest Booking Status"
+              subtitle="Guest booking status distribution."
+              data={guestStatusReportData}
+            />
+          </section>
+        </div>
+      )}
 
-    <div className="grid gap-6 xl:grid-cols-2">
-      <ZoneOccupancyChart />
+      {activeTab === "Monthly" && (
+        <div className="space-y-6">
+          <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm">
+            <div className="grid gap-4 lg:grid-cols-4">
+              <SelectInput
+                label="Current Month"
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+                options={months}
+              />
 
-      <MonthlyComparisonBarChart
-  selectedMonthLabel={selectedMonthLabel}
-  selectedYear={selectedYear}
-  compareMonth={compareMonth}
-  compareYear={compareYear}
-  compareMonthLabel={compareMonthLabel}
-  setCompareMonth={setCompareMonth}
-  setCompareYear={setCompareYear}
-  data={monthlyComparisonChartData}
-/>
-    </div>
-  </div>
-)}
+              <SelectInput
+                label="Current Year"
+                value={selectedYear}
+                onChange={setSelectedYear}
+                options={years.map((year) => ({
+                  value: year,
+                  label: year,
+                }))}
+              />
 
-   {activeTab === "Live" && (
-  <div className="space-y-6">
-    {/* =====================================================
-        LIVE TOP SECTION
-        ===================================================== */}
+              <SelectInput
+                label="Compare Month"
+                value={compareMonth}
+                onChange={setCompareMonth}
+                options={months}
+              />
 
-    <div className="grid gap-6 lg:grid-cols-5">
-      <div className="lg:col-span-3">
-        <LiveParkingFlowChart />
-      </div>
+              <SelectInput
+                label="Compare Year"
+                value={compareYear}
+                onChange={setCompareYear}
+                options={years.map((year) => ({
+                  value: year,
+                  label: year,
+                }))}
+              />
+            </div>
+          </section>
 
-      <div className="lg:col-span-2">
-        <LiveStatusPanel />
-      </div>
-    </div>
+          <section className="grid gap-6 xl:grid-cols-2">
+            <MonthlyComparisonChart
+              data={monthlyComparisonChartData}
+              currentLabel={`${selectedMonthLabel} ${selectedYear}`}
+              compareLabel={`${compareMonthLabel} ${compareYear}`}
+            />
 
-    {/* =====================================================
-        LIVE ACTIVITY + ALERTS
-        ===================================================== */}
+            <RevenueTrendChart
+              data={monthlyRevenueData}
+              title={`${selectedMonthLabel} Revenue Trend`}
+            />
+          </section>
 
-    <div className="grid gap-6 lg:grid-cols-5">
-      <div className="lg:col-span-3">
-        <LiveActivityPanel expanded />
-      </div>
+          <TrafficChart
+            data={monthlyTrafficData}
+            title={`${selectedMonthLabel} Traffic`}
+          />
 
-      <div className="lg:col-span-2">
-        <LiveAlertsPanel />
-      </div>
-    </div>
-  </div>
-)}
+          <section className="grid gap-6 xl:grid-cols-2">
+            <MonthlySummaryCard
+              title={`${selectedMonthLabel} ${selectedYear}`}
+              summary={monthlySummary}
+            />
 
+            <MonthlySummaryCard
+              title={`${compareMonthLabel} ${compareYear}`}
+              summary={compareSummary}
+            />
+          </section>
+        </div>
+      )}
+
+      {activeTab === "Live" && (
+        <div className="space-y-6">
+          <LiveParkingFlowChart data={liveParkingFlowData} />
+
+          <section className="grid gap-6 xl:grid-cols-2">
+            <LiveActivityPanel data={liveActivityData} />
+            <LiveAlertsPanel data={liveAlertsData} />
+          </section>
+        </div>
+      )}
     </div>
   )
 }
 
-
 // =====================================================
-// DATE INPUT
+// SUMMARY GRID
 // =====================================================
 
-function DateInput({ value, onChange }) {
+function SummaryGrid({ summary }) {
+  const cards = [
+    {
+      label: "Total Vehicles",
+      value: summary.totalVehicles,
+      helper: "Registered vehicle records",
+      icon: Car,
+      color: "bg-cyan-50 text-cyan-700",
+    },
+    {
+      label: "Average Occupancy",
+      value: summary.averageOccupancy,
+      helper: "Current bay utilisation",
+      icon: BarChart3,
+      color: "bg-blue-50 text-blue-700",
+    },
+    {
+      label: "Total Revenue",
+      value: `RM ${formatMoney(summary.totalRevenue)}`,
+      helper: "Paid transactions",
+      icon: Wallet,
+      color: "bg-emerald-50 text-emerald-700",
+    },
+    {
+      label: "Reservations",
+      value: summary.reservations,
+      helper: "Student/staff bookings",
+      icon: CalendarCheck,
+      color: "bg-amber-50 text-amber-700",
+    },
+    {
+      label: "Guest Bookings",
+      value: summary.guestBookings,
+      helper: "Guest web bookings",
+      icon: ScanLine,
+      color: "bg-violet-50 text-violet-700",
+    },
+    {
+      label: "ANPR Accuracy",
+      value: summary.anprAccuracy,
+      helper: "Approved detections ratio",
+      icon: Radio,
+      color: "bg-sky-50 text-sky-700",
+    },
+    {
+      label: "Flagged Detections",
+      value: summary.flaggedDetections,
+      helper: "Need manual review",
+      icon: AlertTriangle,
+      color: "bg-red-50 text-red-700",
+    },
+    {
+      label: "Active Issues",
+      value: summary.activeIssues,
+      helper: "Open support tickets",
+      icon: LifeBuoy,
+      color: "bg-orange-50 text-orange-700",
+    },
+  ]
+
   return (
-    <div className="relative">
-      <input
-        type="date"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 w-[145px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-      />
-    </div>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {cards.map((card) => (
+        <SummaryCard key={card.label} card={card} />
+      ))}
+    </section>
   )
 }
 
@@ -641,539 +648,29 @@ function DateInput({ value, onChange }) {
 // SUMMARY CARD
 // =====================================================
 
-function SummaryCard({ label, value, icon: Icon, className }) {
-  return (
-    <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.06] p-4 shadow-sm backdrop-blur">
-      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-2xl ${className}`}>
-        <Icon className="h-5 w-5" />
-      </div>
-
-      <p className="text-lg font-black text-white">{value}</p>
-      <p className="mt-1 text-xs font-bold text-slate-300">{label}</p>
-    </div>
-  )
-}
-
-// =====================================================
-// TRAFFIC CHART
-// =====================================================
-
-function TrafficChart({ data, title = "Traffic & Occupancy Analytics" }) {
-  return (
-    <ChartCard title={title} subtitle="Vehicle entry, exit, and occupancy trend.">
-      <ResponsiveContainer width="100%" height={330}>
-        <LineChart data={data} margin={{ top: 12, right: 20, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey="entries" name="Entries" stroke="#06b6d4" strokeWidth={3} />
-          <Line type="monotone" dataKey="exits" name="Exits" stroke="#2563eb" strokeWidth={3} />
-          <Line type="monotone" dataKey="occupancy" name="Occupancy %" stroke="#14b8a6" strokeWidth={3} />
-        </LineChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// REVENUE TREND CHART
-// =====================================================
-
-function RevenueTrendChart({
-  title = "Revenue Trend",
-  data = revenueTrendData,
-}) {
-  return (
-    <ChartCard title={title} subtitle="Reservation, parking, guest payment, and refund trend.">
-      <ResponsiveContainer width="100%" height={320}>
-        <AreaChart data={data} margin={{ top: 12, right: 20, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
-          <Area type="monotone" dataKey="reservation" name="Reservation Fee" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.18} />
-          <Area type="monotone" dataKey="parking" name="After 7PM Parking" stroke="#2563eb" fill="#2563eb" fillOpacity={0.15} />
-          <Area type="monotone" dataKey="guest" name="Guest Parking" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.16} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// REVENUE BREAKDOWN CHART
-// =====================================================
-
-function RevenueBreakdownChart() {
-  return (
-    <ChartCard title="Revenue Breakdown" subtitle="Revenue grouped by payment category.">
-      <ResponsiveContainer width="100%" height={330}>
-        <PieChart>
-          <Tooltip formatter={(value) => `RM ${value}`} />
-          <Legend />
-          <Pie
-            data={revenueBreakdownReportData}
-            dataKey="value"
-            nameKey="name"
-            innerRadius={70}
-            outerRadius={105}
-            paddingAngle={4}
-          >
-            {revenueBreakdownReportData.map((entry, index) => (
-              <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// ZONE OCCUPANCY CHART
-// =====================================================
-
-function ZoneOccupancyChart() {
-  return (
-    <ChartCard title="Occupancy by Zone" subtitle="Occupied and available bay distribution.">
-      <ResponsiveContainer width="100%" height={320}>
-        <BarChart data={zoneOccupancyReportData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="zone" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="occupied" name="Occupied" fill="#2563eb" radius={[12, 12, 0, 0]} />
-          <Bar dataKey="available" name="Available" fill="#06b6d4" radius={[12, 12, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// ANPR DETECTION CHART
-// =====================================================
-
-function ANPRDetectionChart() {
-  return (
-    <ChartCard title="ANPR Detection Report" subtitle="Approved, flagged, and unknown detections.">
-      <ResponsiveContainer width="100%" height={320}>
-        <BarChart data={anprDetectionData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="approved" name="Approved" fill="#14b8a6" radius={[12, 12, 0, 0]} />
-          <Bar dataKey="flagged" name="Flagged" fill="#f97316" radius={[12, 12, 0, 0]} />
-          <Bar dataKey="unknown" name="Unknown" fill="#64748b" radius={[12, 12, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// Booking Flow CHART
-// =====================================================
-
-function BookingFlowChart() {
-  return (
-    <ChartCard title="Booking Conversion Funnel" subtitle="Guest booking and reservation conversion behaviour.">
-      <ResponsiveContainer width="100%" height={330}>
-        <BarChart data={conversionData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="guest" name="Guest Booking" fill="#06b6d4" radius={[12, 12, 0, 0]} />
-          <Bar dataKey="reservation" name="Student/Staff Reservation" fill="#2563eb" radius={[12, 12, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// STATUS PIE CHARTS
-// =====================================================
-
-function ReservationStatusChart() {
-  return (
-    <PieReportCard
-      title="Reservation Status"
-      subtitle="Upcoming, active, completed, and cancelled reservations."
-      data={reservationStatusReportData}
-    />
-  )
-}
-
-function GuestStatusChart() {
-  return (
-    <PieReportCard
-      title="Guest Booking Status"
-      subtitle="Guest booking status distribution."
-      data={guestStatusReportData}
-    />
-  )
-}
-
-function PieReportCard({ title, subtitle, data }) {
-  return (
-    <ChartCard title={title} subtitle={subtitle}>
-      <ResponsiveContainer width="100%" height={320}>
-        <PieChart>
-          <Tooltip />
-          <Legend />
-          <Pie data={data} dataKey="value" nameKey="name" outerRadius={105}>
-            {data.map((entry, index) => (
-              <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  )
-}
-
-// =====================================================
-// MONTHLY COMPARISON BAR CHART
-// =====================================================
-
-function MonthlyComparisonBarChart({
-  selectedMonthLabel,
-  selectedYear,
-  compareMonth,
-  compareYear,
-  compareMonthLabel,
-  setCompareMonth,
-  setCompareYear,
-  data,
-}) {
-  const currentLabel = `${selectedMonthLabel} ${selectedYear}`
-  const compareLabel = `${compareMonthLabel} ${compareYear}`
+function SummaryCard({ card }) {
+  const Icon = card.icon
 
   return (
-    <div className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
-      <div className="mb-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+    <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-black text-slate-950">
-            Monthly Comparison
+          <p className="text-sm font-bold text-slate-500">{card.label}</p>
+
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+            {card.value}
           </h3>
 
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            Compare {currentLabel} with another month.
+          <p className="mt-1 text-xs font-semibold text-slate-400">
+            {card.helper}
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden text-sm font-black text-slate-400 sm:inline">
-            vs
-          </span>
-
-          <select
-            value={compareMonth}
-            onChange={(event) => setCompareMonth(Number(event.target.value))}
-            className="h-11 w-[120px] rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-          >
-            {monthOptions.map((month) => (
-              <option key={month.value} value={month.value}>
-                {month.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={compareYear}
-            onChange={(event) => setCompareYear(Number(event.target.value))}
-            className="h-11 w-[90px] rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-          >
-            {yearOptions.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${card.color}`}
+        >
+          <Icon className="h-6 w-6" />
         </div>
-      </div>
-
-      <ResponsiveContainer width="100%" height={320}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="metric" tickLine={false} axisLine={false} />
-          <YAxis tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
-
-          <Bar
-            dataKey="current"
-            name={currentLabel}
-            fill="#06b6d4"
-            radius={[12, 12, 0, 0]}
-          />
-
-          <Bar
-            dataKey="compare"
-            name={compareLabel}
-            fill="#2563eb"
-            radius={[12, 12, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-// =====================================================
-// LIVE PARKING FLOW CHART
-// =====================================================
-
-function LiveParkingFlowChart() {
-  return (
-    <div className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 p-6 shadow-sm">
-      <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
-            Live Graph
-          </p>
-
-          <h3 className="mt-3 text-2xl font-black text-white">
-            Real-Time Vehicle Flow
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-slate-400">
-            Live placeholder graph for vehicle entries, exits, and active
-            parking sessions.
-          </p>
-        </div>
-
-        <span className="w-fit rounded-full bg-emerald-400/10 px-4 py-2 text-xs font-black text-emerald-300">
-          Updating Live
-        </span>
-      </div>
-
-      <div className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={liveParkingFlowData}
-            margin={{ top: 12, right: 20, left: 0, bottom: 0 }}
-          >
-            <defs>
-              <linearGradient id="liveEntries" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35} />
-                <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-              </linearGradient>
-
-              <linearGradient id="liveActive" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.35} />
-                <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" />
-
-            <XAxis
-              dataKey="time"
-              tickLine={false}
-              axisLine={false}
-              stroke="#94a3b8"
-              tick={{ fontSize: 12 }}
-            />
-
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              stroke="#94a3b8"
-              tick={{ fontSize: 12 }}
-            />
-
-            <Tooltip
-              contentStyle={{
-                borderRadius: "16px",
-                border: "1px solid #e2e8f0",
-                fontWeight: 700,
-              }}
-            />
-
-            <Legend />
-
-            <Area
-              type="monotone"
-              dataKey="active"
-              name="Active Sessions"
-              stroke="#14b8a6"
-              fill="url(#liveActive)"
-              strokeWidth={3}
-            />
-
-            <Area
-              type="monotone"
-              dataKey="entries"
-              name="Entries"
-              stroke="#06b6d4"
-              fill="url(#liveEntries)"
-              strokeWidth={3}
-            />
-
-            <Line
-              type="monotone"
-              dataKey="exits"
-              name="Exits"
-              stroke="#60a5fa"
-              strokeWidth={3}
-              dot={{ r: 3 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
-}
-
-// =====================================================
-// LIVE STATUS PANEL
-// =====================================================
-
-function LiveStatusPanel() {
-  return (
-    <div className="rounded-[2rem] border border-slate-800 bg-slate-950 p-6 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
-        Live System
-      </p>
-
-      <h3 className="mt-3 text-2xl font-black text-white">
-        Current Operations
-      </h3>
-
-      <div className="mt-6 grid gap-4">
-        <LiveMetric label="ANPR Cameras" value="8 / 8 Online" />
-        <LiveMetric label="Active Parking Sessions" value="39 Vehicles" />
-        <LiveMetric label="Guest ANPR Access" value="16 Enabled" />
-        <LiveMetric label="Sensor Health" value="94% Online" />
-        <LiveMetric label="Pending Issues" value="9 Tickets" />
-      </div>
-    </div>
-  )
-}
-
-function LiveMetric({ label, value }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-      <p className="text-sm font-bold text-slate-400">{label}</p>
-      <p className="mt-2 text-xl font-black text-cyan-300">{value}</p>
-    </div>
-  )
-}
-
-// =====================================================
-// LIVE ALERTS PANEL
-// =====================================================
-
-function LiveAlertsPanel() {
-  return (
-    <div className="rounded-[2rem] border border-red-100 bg-white/90 p-6 shadow-sm backdrop-blur">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-red-500">
-            Live Alerts
-          </p>
-
-          <h3 className="mt-2 text-lg font-black text-slate-950">
-            Attention Required
-          </h3>
-
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            Issues that may require admin review.
-          </p>
-        </div>
-
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-          <AlertTriangle className="h-5 w-5" />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {liveAlertsData.map((alert) => (
-          <div
-            key={alert.id}
-            className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-black text-slate-900">
-                  {alert.title}
-                </p>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  {alert.description}
-                </p>
-
-                <p className="mt-2 text-xs font-semibold text-slate-400">
-                  {alert.time} • {alert.category}
-                </p>
-              </div>
-
-              <StatusBadge status={alert.status} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// =====================================================
-// LIVE ACTIVITY PANEL
-// =====================================================
-
-function LiveActivityPanel({ expanded = false }) {
-  return (
-    <div className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-black text-slate-950">
-            Live Activity
-          </h3>
-          <p className="mt-1 text-sm text-slate-500">
-            Latest ANPR, payment, guest, and reservation events.
-          </p>
-        </div>
-
-        <span className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700">
-          Live
-        </span>
-      </div>
-
-      <div className={`space-y-4 ${expanded ? "" : "max-h-[360px] overflow-y-auto pr-1"}`}>
-        {liveActivityData.map((activity) => (
-          <div
-            key={activity.id}
-            className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-black text-slate-800">
-                  {activity.title}
-                </p>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  {activity.description}
-                </p>
-
-                <p className="mt-2 text-xs font-semibold text-slate-400">
-                  {activity.time} • {activity.type}
-                </p>
-              </div>
-
-              <StatusBadge status={activity.status} />
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -1185,15 +682,562 @@ function LiveActivityPanel({ expanded = false }) {
 
 function ChartCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
+    <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6">
         <h3 className="text-lg font-black text-slate-950">{title}</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-500">{subtitle}</p>
+
+        {subtitle && (
+          <p className="mt-1 text-sm leading-6 text-slate-500">{subtitle}</p>
+        )}
       </div>
 
       {children}
     </div>
   )
 }
+
+// =====================================================
+// EMPTY CHART
+// =====================================================
+
+function EmptyChart({ title = "No data yet", helper = "Data will appear when records exist." }) {
+  return (
+    <div className="flex h-80 items-center justify-center rounded-3xl bg-slate-50 text-center">
+      <div>
+        <p className="text-sm font-black text-slate-700">{title}</p>
+        <p className="mt-1 text-xs font-semibold text-slate-400">{helper}</p>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// TRAFFIC CHART
+// =====================================================
+
+function TrafficChart({ data = [], title = "Traffic Analytics" }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title={title}
+      subtitle="ANPR entry, exit, and occupancy movement."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No traffic data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={340}>
+          <LineChart data={chartData} margin={{ top: 12, right: 20, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+
+            <Line type="monotone" dataKey="entries" name="Entries" stroke="#06b6d4" strokeWidth={3} />
+            <Line type="monotone" dataKey="exits" name="Exits" stroke="#2563eb" strokeWidth={3} />
+            <Line type="monotone" dataKey="occupancy" name="Occupancy %" stroke="#14b8a6" strokeWidth={3} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// REVENUE TREND CHART
+// =====================================================
+
+function RevenueTrendChart({ data = [], title = "Revenue Trend" }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title={title}
+      subtitle="Reservation, parking, guest payment, and refund trend."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No revenue trend data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <AreaChart data={chartData} margin={{ top: 12, right: 20, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} />
+            <Tooltip formatter={(value) => `RM ${formatMoney(value)}`} />
+            <Legend />
+
+            <Area type="monotone" dataKey="reservation" name="Reservation Fee" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.18} />
+            <Area type="monotone" dataKey="parking" name="After 7PM Parking" stroke="#2563eb" fill="#2563eb" fillOpacity={0.15} />
+            <Area type="monotone" dataKey="guest" name="Guest Parking" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.16} />
+            <Area type="monotone" dataKey="refund" name="Refund" stroke="#f97316" fill="#f97316" fillOpacity={0.12} />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// REVENUE BREAKDOWN CHART
+// =====================================================
+
+function RevenueBreakdownChart({ data = [] }) {
+  const chartData = data.filter((item) => Number(item.value || 0) > 0)
+
+  return (
+    <ChartCard
+      title="Revenue Breakdown"
+      subtitle="Reservation fee, parking fee, guest fee, and refunds."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No revenue breakdown yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <PieChart>
+            <Tooltip formatter={(value) => `RM ${formatMoney(value)}`} />
+            <Legend />
+
+            <Pie
+              data={chartData}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={65}
+              outerRadius={95}
+              paddingAngle={4}
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={entry.name}
+                  fill={chartColors[index % chartColors.length]}
+                />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// ZONE OCCUPANCY CHART
+// =====================================================
+
+function ZoneOccupancyChart({ data = [] }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title="Occupancy by Zone"
+      subtitle="Available and occupied bays by parking zone."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No zone data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="zone" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="available" name="Available" fill="#14b8a6" radius={[10, 10, 0, 0]} />
+            <Bar dataKey="occupied" name="Occupied / Unavailable" fill="#2563eb" radius={[10, 10, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// ANPR DETECTION CHART
+// =====================================================
+
+function AnprDetectionChart({ data = [] }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title="ANPR Detection Status"
+      subtitle="Approved, flagged, and unknown detections."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No ANPR detection data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="approved" name="Approved" fill="#14b8a6" radius={[10, 10, 0, 0]} />
+            <Bar dataKey="flagged" name="Flagged" fill="#f97316" radius={[10, 10, 0, 0]} />
+            <Bar dataKey="unknown" name="Unknown" fill="#64748b" radius={[10, 10, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// BOOKING FLOW CHART
+// =====================================================
+
+function BookingFlowChart({ data = [] }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title="Booking Flow"
+      subtitle="Guest booking and reservation flow from creation to entry."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No booking flow data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={340}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="guest" name="Guest Bookings" fill="#06b6d4" radius={[10, 10, 0, 0]} />
+            <Bar dataKey="reservation" name="Reservations" fill="#8b5cf6" radius={[10, 10, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// STATUS PIE CHART
+// =====================================================
+
+function StatusPieChart({ title, subtitle, data = [] }) {
+  const chartData = data.filter((item) => Number(item.value || 0) > 0)
+
+  return (
+    <ChartCard title={title} subtitle={subtitle}>
+      {chartData.length === 0 ? (
+        <EmptyChart title="No status data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <PieChart>
+            <Tooltip />
+            <Legend />
+
+            <Pie
+              data={chartData}
+              dataKey="value"
+              nameKey="name"
+              outerRadius={100}
+              paddingAngle={4}
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={entry.name}
+                  fill={chartColors[index % chartColors.length]}
+                />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// MONTHLY COMPARISON CHART
+// =====================================================
+
+function MonthlyComparisonChart({ data = [], currentLabel, compareLabel }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title="Monthly Comparison"
+      subtitle={`${currentLabel} compared with ${compareLabel}.`}
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No monthly comparison data yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="metric" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="current" name={currentLabel} fill="#06b6d4" radius={[10, 10, 0, 0]} />
+            <Bar dataKey="compare" name={compareLabel} fill="#8b5cf6" radius={[10, 10, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// LIVE PARKING FLOW CHART
+// =====================================================
+
+function LiveParkingFlowChart({ data = [] }) {
+  const chartData = data
+
+  return (
+    <ChartCard
+      title="Live Parking Flow"
+      subtitle="Today’s ANPR entries, exits, and active parking movement."
+    >
+      {chartData.length === 0 ? (
+        <EmptyChart title="No live parking flow yet" />
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="time" tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="entries" name="Entries" stroke="#06b6d4" strokeWidth={3} />
+            <Line type="monotone" dataKey="exits" name="Exits" stroke="#2563eb" strokeWidth={3} />
+            <Line type="monotone" dataKey="active" name="Active" stroke="#14b8a6" strokeWidth={3} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// LIVE ACTIVITY PANEL
+// =====================================================
+
+function LiveActivityPanel({ data = [] }) {
+  const activities = data
+
+  return (
+    <ChartCard
+      title="Live Activity"
+      subtitle="Latest parking, payment, ANPR, booking, and support activity."
+    >
+      {activities.length === 0 ? (
+        <EmptyChart title="No live activity yet" />
+      ) : (
+        <div className="space-y-3">
+          {activities.map((activity) => (
+            <LiveItem
+              key={activity.id}
+              title={activity.title}
+              description={activity.description}
+              time={activity.time}
+              status={activity.status}
+            />
+          ))}
+        </div>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// LIVE ALERTS PANEL
+// =====================================================
+
+function LiveAlertsPanel({ data = [] }) {
+  const alerts = data
+
+  return (
+    <ChartCard
+      title="Live Alerts"
+      subtitle="Important alerts from ANPR, issues, and guest bookings."
+    >
+      {alerts.length === 0 ? (
+        <EmptyChart title="No live alerts yet" />
+      ) : (
+        <div className="space-y-3">
+          {alerts.map((alert) => (
+            <LiveItem
+              key={alert.id}
+              title={alert.title}
+              description={alert.description}
+              time={alert.time}
+              status={alert.status}
+            />
+          ))}
+        </div>
+      )}
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// LIVE ITEM
+// =====================================================
+
+function LiveItem({ title, description, time, status }) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-slate-800">{title}</p>
+
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            {description}
+          </p>
+
+          <p className="mt-2 text-xs font-semibold text-slate-400">{time}</p>
+        </div>
+
+        <Pill label={status} />
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// MONTHLY SUMMARY CARD
+// =====================================================
+
+function MonthlySummaryCard({ title, summary }) {
+  return (
+    <ChartCard title={title} subtitle="Monthly selected summary.">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <InfoStat label="Vehicles" value={summary.totalVehicles} />
+        <InfoStat label="Occupancy" value={summary.averageOccupancy} />
+        <InfoStat label="Revenue" value={`RM ${formatMoney(summary.totalRevenue)}`} />
+        <InfoStat label="Reservations" value={summary.reservations} />
+        <InfoStat label="Guest Bookings" value={summary.guestBookings} />
+        <InfoStat label="ANPR Accuracy" value={summary.anprAccuracy} />
+        <InfoStat label="Flagged" value={summary.flaggedDetections} />
+        <InfoStat label="Active Issues" value={summary.activeIssues} />
+      </div>
+    </ChartCard>
+  )
+}
+
+// =====================================================
+// INFO STAT
+// =====================================================
+
+function InfoStat({ label, value }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+    </div>
+  )
+}
+
+// =====================================================
+// HERO MINI STAT
+// =====================================================
+
+function HeroMiniStat({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 backdrop-blur">
+      <p className="text-xs font-bold text-slate-400">{label}</p>
+      <p className="mt-1 text-xl font-black text-cyan-300">{value}</p>
+    </div>
+  )
+}
+
+// =====================================================
+// DATE INPUT
+// =====================================================
+
+function DateInput({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </label>
+
+      <input
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+      />
+    </div>
+  )
+}
+
+// =====================================================
+// SELECT INPUT
+// =====================================================
+
+function SelectInput({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </label>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+// =====================================================
+// PILL
+// =====================================================
+
+function Pill({ label }) {
+  const styles = {
+    Approved: "bg-emerald-50 text-emerald-700",
+    Paid: "bg-cyan-50 text-cyan-700",
+    Pending: "bg-amber-50 text-amber-700",
+    Open: "bg-red-50 text-red-700",
+    "In Progress": "bg-amber-50 text-amber-700",
+    Resolved: "bg-emerald-50 text-emerald-700",
+    Flagged: "bg-orange-50 text-orange-700",
+    Unknown: "bg-slate-100 text-slate-600",
+    Expired: "bg-orange-50 text-orange-700",
+    Critical: "bg-red-50 text-red-700",
+    High: "bg-orange-50 text-orange-700",
+  }
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${
+        styles[label] || "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {label}
+    </span>
+  )
+}
+
+// =====================================================
+// FORMAT MONEY
+// =====================================================
+
+function formatMoney(value) {
+  return Number(value || 0).toFixed(2)
+}
+
+// =====================================================
+// EXPORT
+// =====================================================
 
 export default Reports

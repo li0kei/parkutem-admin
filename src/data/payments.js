@@ -1,199 +1,58 @@
 // =====================================================
-// PAYMENT TRANSACTIONS DUMMY DATA
+// PAYMENT FILTER OPTIONS
+// Backend source: Supabase payment_transactions + reservations fallback
 // =====================================================
 
-export const payments = [
-  {
-    id: 1,
-    transactionId: "TXN-1001",
-    type: "Reservation Fee",
-    amount: 2.0,
-    userName: "Ahmad Hakimi",
-    userType: "Student",
-    reference: "RSV-1001",
-    vehiclePlate: "MDA1234",
-    dateTime: "15 May 2026, 7:55 PM",
-    paymentMethod: "Wallet",
-    status: "Success",
-    source: "Student/Staff App",
-    remarks:
-      "Fixed one-time reservation fee charged when user reserved Bay A-12.",
-  },
-  {
-    id: 2,
-    transactionId: "TXN-1002",
-    type: "Parking Fee",
-    amount: 3.0,
-    userName: "Ahmad Hakimi",
-    userType: "Student",
-    reference: "ANPR-MDA1234",
-    vehiclePlate: "MDA1234",
-    dateTime: "15 May 2026, 10:05 PM",
-    paymentMethod: "Wallet",
-    status: "Success",
-    source: "ANPR Exit Session",
-    remarks:
-      "Parking fee charged based on actual usage after 7PM. Free parking period before 7PM was excluded.",
-  },
-  {
-    id: 3,
-    transactionId: "TXN-1003",
-    type: "Guest Parking Fee",
-    amount: 5.0,
-    userName: "Nur Aina",
-    userType: "Guest",
-    reference: "GST-1001",
-    vehiclePlate: "MEL7788",
-    dateTime: "15 May 2026, 8:50 AM",
-    paymentMethod: "FPX",
-    status: "Paid",
-    source: "Guest Web Portal",
-    remarks:
-      "Guest payment completed. Plate registered automatically for ANPR guest access.",
-  },
-  {
-    id: 4,
-    transactionId: "TXN-1004",
-    type: "Wallet Top Up",
-    amount: 30.0,
-    userName: "Siti Farah",
-    userType: "Student",
-    reference: "TOPUP-2210",
-    vehiclePlate: "JKV9021",
-    dateTime: "15 May 2026, 1:20 PM",
-    paymentMethod: "FPX",
-    status: "Success",
-    source: "Student/Staff App",
-    remarks:
-      "Student topped up wallet balance for reservation and after-7PM parking payments.",
-  },
-  {
-    id: 5,
-    transactionId: "TXN-1005",
-    type: "Reservation Fee",
-    amount: 2.0,
-    userName: "Dr. Hafiz Rahman",
-    userType: "Staff",
-    reference: "RSV-1003",
-    vehiclePlate: "UTM8842",
-    dateTime: "15 May 2026, 8:55 AM",
-    paymentMethod: "Wallet",
-    status: "Success",
-    source: "Student/Staff App",
-    remarks:
-      "Staff reservation completed during free parking period. Only reservation fee was charged.",
-  },
-  {
-    id: 6,
-    transactionId: "TXN-1006",
-    type: "Parking Fee",
-    amount: 2.5,
-    userName: "Lim Wei Shen",
-    userType: "Student",
-    reference: "ANPR-BKP4410",
-    vehiclePlate: "BKP4410",
-    dateTime: "15 May 2026, 8:45 PM",
-    paymentMethod: "Wallet",
-    status: "Success",
-    source: "ANPR Exit Session",
-    remarks:
-      "Reservation started before 7PM. Parking fee calculated only for after-7PM duration.",
-  },
-  {
-    id: 7,
-    transactionId: "TXN-1007",
-    type: "Guest Parking Fee",
-    amount: 5.0,
-    userName: "Daniel Tan",
-    userType: "Guest",
-    reference: "GST-1002",
-    vehiclePlate: "ABC9921",
-    dateTime: "15 May 2026, 9:40 AM",
-    paymentMethod: "Card",
-    status: "Paid",
-    source: "Guest Web Portal",
-    remarks:
-      "Guest web booking paid successfully. Receipt sent to guest email.",
-  },
-  {
-    id: 8,
-    transactionId: "TXN-1008",
-    type: "Refund",
-    amount: -5.0,
-    userName: "Aisyah Rahim",
-    userType: "Guest",
-    reference: "GST-1005",
-    vehiclePlate: "JTN6677",
-    dateTime: "14 May 2026, 10:30 AM",
-    paymentMethod: "Card",
-    status: "Refunded",
-    source: "Guest Web Portal",
-    remarks:
-      "Guest cancelled booking. Refund recorded and ANPR access blocked.",
-  },
-  {
-    id: 9,
-    transactionId: "TXN-1009",
-    type: "Wallet Top Up",
-    amount: 50.0,
-    userName: "En. Roslan",
-    userType: "Staff",
-    reference: "TOPUP-8841",
-    vehiclePlate: "MEL2026",
-    dateTime: "15 May 2026, 2:05 PM",
-    paymentMethod: "FPX",
-    status: "Pending",
-    source: "Student/Staff App",
-    remarks:
-      "Wallet top up pending payment confirmation.",
-  },
-  {
-    id: 10,
-    transactionId: "TXN-1010",
-    type: "Guest Parking Fee",
-    amount: 5.0,
-    userName: "Mr. Raj Kumar",
-    userType: "Guest",
-    reference: "GST-1004",
-    vehiclePlate: "WYY5510",
-    dateTime: "15 May 2026, 7:45 PM",
-    paymentMethod: "FPX",
-    status: "Pending",
-    source: "Guest Web Portal",
-    remarks:
-      "Guest payment pending. ANPR access is not enabled until payment success.",
-  },
-]
+export const payments = []
+
+// =====================================================
+// PAYMENT TYPE OPTIONS
+// =====================================================
 
 export const paymentTypeOptions = [
   "All Types",
   "Reservation Fee",
-  "Parking Fee",
+  "After 7PM Parking Fee",
   "Guest Parking Fee",
   "Wallet Top Up",
   "Refund",
 ]
 
+// =====================================================
+// PAYMENT STATUS OPTIONS
+// =====================================================
+
 export const paymentStatusOptions = [
   "All Status",
-  "Success",
   "Paid",
   "Pending",
   "Failed",
   "Refunded",
 ]
 
+// =====================================================
+// PAYMENT USER TYPE OPTIONS
+// =====================================================
+
 export const paymentUserTypeOptions = [
   "All Users",
   "Student",
   "Staff",
+  "Student/Staff",
   "Guest",
 ]
 
+// =====================================================
+// PAYMENT METHOD OPTIONS
+// =====================================================
+
 export const paymentMethodOptions = [
   "All Methods",
+  "Simulated",
   "Wallet",
   "FPX",
   "Card",
-  "TNG Placeholder",
+  "TNG",
+  "DuitNow",
+  "Unknown",
 ]

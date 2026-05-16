@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   CalendarCheck,
   CheckCircle,
@@ -26,17 +26,68 @@ import {
   reservationZoneOptions,
 } from "../data/reservations"
 
+import {
+  loadAdminReservations,
+  subscribeToReservations,
+  unsubscribeFromReservations,
+  updateReservationStatus,
+} from "../services/adminReservationService"
+
 // =====================================================
 // RESERVATION MANAGEMENT PAGE
 // =====================================================
 
 function Reservations() {
   const [reservationData, setReservationData] = useState(reservations)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedZone, setSelectedZone] = useState("All Zones")
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedReservation, setSelectedReservation] = useState(null)
+
+    // =====================================================
+  // LOAD RESERVATIONS FROM SUPABASE
+  // =====================================================
+
+  async function loadReservations() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realReservations = await loadAdminReservations()
+
+      setReservationData(realReservations)
+    } catch (error) {
+      console.error("Failed to load reservations:", error)
+
+      setLoadError(
+        error.message || "Unable to load reservations from Supabase."
+      )
+
+      setReservationData(reservations)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadReservations()
+
+    const channel = subscribeToReservations(() => {
+      loadReservations()
+    })
+
+    return () => {
+      unsubscribeFromReservations(channel)
+    }
+  }, [])
 
   // =====================================================
   // FILTERED RESERVATIONS
@@ -47,12 +98,18 @@ function Reservations() {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
-        reservation.reservationId.toLowerCase().includes(searchValue) ||
-        reservation.userName.toLowerCase().includes(searchValue) ||
-        reservation.universityId.toLowerCase().includes(searchValue) ||
-        reservation.vehiclePlate.toLowerCase().includes(searchValue) ||
-        reservation.bayNumber.toLowerCase().includes(searchValue) ||
-        reservation.zone.toLowerCase().includes(searchValue)
+        String(reservation.reservationId || "")
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(reservation.userName || "").toLowerCase().includes(searchValue) ||
+        String(reservation.universityId || "")
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(reservation.vehiclePlate || "")
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(reservation.bayNumber || "").toLowerCase().includes(searchValue) ||
+        String(reservation.zone || "").toLowerCase().includes(searchValue)
 
       const matchesStatus =
         selectedStatus === "All Status" ||
@@ -103,27 +160,33 @@ function Reservations() {
   // UPDATE RESERVATION STATUS
   // =====================================================
 
-  function handleUpdateStatus(reservationId, newStatus) {
-    const updateReservation = (reservation) => {
-      if (reservation.id !== reservationId) {
-        return reservation
-      }
+  async function handleUpdateStatus(reservationId, newStatus) {
+    try {
+      const updatedReservation = await updateReservationStatus(
+        reservationId,
+        newStatus
+      )
 
-      return {
-        ...reservation,
-        status: newStatus,
-      }
+      setReservationData((prev) =>
+        prev.map((reservation) =>
+          reservation.id === reservationId ? updatedReservation : reservation
+        )
+      )
+
+      setSelectedReservation((prev) => {
+        if (!prev || prev.id !== reservationId) {
+          return prev
+        }
+
+        return updatedReservation
+      })
+    } catch (error) {
+      console.error("Failed to update reservation status:", error)
+
+      setLoadError(
+        error.message || "Unable to update reservation status in Supabase."
+      )
     }
-
-    setReservationData((prev) => prev.map(updateReservation))
-
-    setSelectedReservation((prev) => {
-      if (!prev || prev.id !== reservationId) {
-        return prev
-      }
-
-      return updateReservation(prev)
-    })
   }
 
   // =====================================================
@@ -139,6 +202,23 @@ function Reservations() {
 
   return (
     <div className="space-y-6">
+
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
+
+          {loadError && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+              {loadError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+              Loading reservation records from Supabase...
+            </div>
+          )}
+
       {/* =====================================================
           SUMMARY PANEL
           ===================================================== */}
@@ -235,7 +315,7 @@ function Reservations() {
           </p>
 
           <p className="mt-1 text-xs font-bold text-slate-500">
-            Total dummy reservation fee collected
+            Total reservation fee recorded
           </p>
         </div>
 
@@ -258,7 +338,7 @@ function Reservations() {
           </p>
 
           <p className="mt-1 text-xs font-bold text-slate-500">
-            Total dummy after-7PM parking fee
+            Total after-7PM parking fee recorded
           </p>
         </div>
       </section>

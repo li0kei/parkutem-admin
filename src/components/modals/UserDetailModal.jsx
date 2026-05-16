@@ -84,9 +84,9 @@ function UserDetailModal({ user, isOpen, onClose, onUpdateAccountStatus }) {
                 </p>
 
                 <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Dummy admin action for frontend prototype. Later this will
-                  update the user account status in the backend.
-                </p>
+                  This account status is saved to Supabase. Later, wallet and vehicle
+                  ownership changes will be connected through the mobile app backend.
+                 </p>
               </div>
 
               <div className="w-full sm:w-60">

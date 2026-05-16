@@ -1,38 +1,123 @@
 // =====================================================
-// DUMMY ADMIN AUTH UTILITIES
+// IMPORTS
 // =====================================================
 
-const AUTH_KEY = "parkutem_admin_auth"
-const ADMIN_EMAIL_KEY = "parkutem_admin_email"
-
-const DUMMY_ADMIN = {
-  email: "admin@parkutem.com",
-  password: "password123",
-}
+import { supabase } from "../lib/supabaseClient"
 
 // =====================================================
 // LOGIN ADMIN
 // =====================================================
 
-export function loginAdmin(email, password) {
-  const normalizedEmail = email.trim().toLowerCase()
+export async function loginAdmin(email, password) {
+  const cleanEmail = email.trim().toLowerCase()
 
-  const isValidEmail = normalizedEmail === DUMMY_ADMIN.email
-  const isValidPassword = password === DUMMY_ADMIN.password
+  const { data: authData, error: authError } =
+    await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    })
 
-  if (!isValidEmail || !isValidPassword) {
+  if (authError) {
     return {
       success: false,
-      message: "Invalid email or password. Please try again.",
+      message: authError.message || "Invalid admin email or password.",
     }
   }
 
-  localStorage.setItem(AUTH_KEY, "true")
-  localStorage.setItem(ADMIN_EMAIL_KEY, normalizedEmail)
+  const user = authData?.user
+
+  if (!user) {
+    return {
+      success: false,
+      message: "Unable to verify admin account.",
+    }
+  }
+
+  const { data: adminProfile, error: profileError } = await supabase
+    .from("admin_users")
+    .select("id, user_id, email, full_name, role, status")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle()
+
+  if (profileError || !adminProfile) {
+    await supabase.auth.signOut()
+
+    return {
+      success: false,
+      message: "This account is not registered as an active ParkUTeM admin.",
+    }
+  }
+
+  localStorage.setItem("parkutem_admin_profile", JSON.stringify(adminProfile))
 
   return {
     success: true,
-    message: "Login successful.",
+    user,
+    adminProfile,
+  }
+}
+
+// =====================================================
+// GET CURRENT ADMIN SESSION
+// =====================================================
+
+export async function getCurrentAdminSession() {
+  const { data, error } = await supabase.auth.getSession()
+
+  if (error || !data?.session) {
+    return {
+      success: false,
+      session: null,
+      adminProfile: null,
+    }
+  }
+
+  const { data: adminProfile, error: profileError } = await supabase
+    .from("admin_users")
+    .select("id, user_id, email, full_name, role, status")
+    .eq("user_id", data.session.user.id)
+    .eq("status", "active")
+    .maybeSingle()
+
+  if (profileError || !adminProfile) {
+    await supabase.auth.signOut()
+    localStorage.removeItem("parkutem_admin_profile")
+
+    return {
+      success: false,
+      session: null,
+      adminProfile: null,
+    }
+  }
+
+  localStorage.setItem("parkutem_admin_profile", JSON.stringify(adminProfile))
+
+  return {
+    success: true,
+    session: data.session,
+    adminProfile,
+  }
+}
+
+// =====================================================
+// GET CURRENT ADMIN PROFILE
+// Legacy function used by Topbar.jsx
+// =====================================================
+
+export function getCurrentAdmin() {
+  try {
+    const savedProfile = localStorage.getItem("parkutem_admin_profile")
+
+    if (!savedProfile) {
+      return null
+    }
+
+    return JSON.parse(savedProfile)
+  } catch (error) {
+    console.error("Failed to read admin profile:", error)
+    localStorage.removeItem("parkutem_admin_profile")
+    return null
   }
 }
 
@@ -40,27 +125,17 @@ export function loginAdmin(email, password) {
 // LOGOUT ADMIN
 // =====================================================
 
-export function logoutAdmin() {
-  localStorage.removeItem(AUTH_KEY)
-  localStorage.removeItem(ADMIN_EMAIL_KEY)
+export async function logoutAdmin() {
+  localStorage.removeItem("parkutem_admin_profile")
+
+  await supabase.auth.signOut()
 }
 
 // =====================================================
-// CHECK AUTH STATUS
+// LEGACY COMPATIBILITY
+// Used by ProtectedRoute or older components.
 // =====================================================
 
 export function isAdminAuthenticated() {
-  return localStorage.getItem(AUTH_KEY) === "true"
-}
-
-// =====================================================
-// GET CURRENT ADMIN
-// =====================================================
-
-export function getCurrentAdmin() {
-  return {
-    email: localStorage.getItem(ADMIN_EMAIL_KEY) || DUMMY_ADMIN.email,
-    name: "ParkUTeM Admin",
-    role: "System Administrator",
-  }
+  return Boolean(localStorage.getItem("parkutem_admin_profile"))
 }

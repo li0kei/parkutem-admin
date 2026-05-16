@@ -117,7 +117,6 @@ export const occupancyByZoneData = [
   { zone: "Zone B", occupied: 62, available: 38 },
   { zone: "Zone C", occupied: 81, available: 19 },
   { zone: "Zone D", occupied: 54, available: 46 },
-  { zone: "Visitor", occupied: 43, available: 57 },
 ]
 
 // =====================================================

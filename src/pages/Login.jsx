@@ -17,13 +17,17 @@ import { loginAdmin } from "../utils/auth"
 function Login() {
   const navigate = useNavigate()
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  })
+  const [formData, setFormData] = useState(() => ({
+  email: localStorage.getItem("parkutem_admin_email") || "",
+  password: "",
+}))
 
-  const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+const [showPassword, setShowPassword] = useState(false)
+
+const [rememberMe, setRememberMe] = useState(() => {
+  return localStorage.getItem("parkutem_admin_remember") === "true"
+})
+
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -45,45 +49,73 @@ function Login() {
   }
 
   // =====================================================
+  // VALIDATE LOGIN FORM
+  // =====================================================
+
+  function validateLoginForm() {
+    if (!formData.email.trim()) {
+      return "Admin email address is required."
+    }
+
+    if (!formData.password.trim()) {
+      return "Admin password is required."
+    }
+
+    return ""
+  }
+
+  // =====================================================
   // HANDLE LOGIN
   // =====================================================
 
-  function handleLogin(event) {
+  async function handleLogin(event) {
     event.preventDefault()
 
-    setIsLoading(true)
+    const validationError = validateLoginForm()
 
-    setTimeout(() => {
-      const result = loginAdmin(formData.email, formData.password)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setIsLoading(true)
+    setError("")
+
+    try {
+      const result = await loginAdmin(formData.email, formData.password)
 
       if (!result.success) {
         setError(result.message)
-        setIsLoading(false)
         return
       }
 
       if (rememberMe) {
-        localStorage.setItem("parkutem_admin_remember", "true")
-      } else {
-        localStorage.removeItem("parkutem_admin_remember")
-      }
+  localStorage.setItem("parkutem_admin_remember", "true")
+  localStorage.setItem(
+    "parkutem_admin_email",
+    formData.email.trim().toLowerCase()
+  )
+} else {
+  localStorage.removeItem("parkutem_admin_remember")
+  localStorage.removeItem("parkutem_admin_email")
+}
 
       navigate("/dashboard", { replace: true })
-    }, 450)
+    } catch (error) {
+      console.error("Admin login failed:", error)
+
+      setError(
+        error.message ||
+          "Unable to sign in right now. Please check your connection and try again."
+      )
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   // =====================================================
-  // USE DEMO ACCOUNT
+  // RENDER
   // =====================================================
-
-  function handleUseDemoAccount() {
-    setFormData({
-      email: "admin@parkutem.com",
-      password: "password123",
-    })
-
-    setError("")
-  }
 
   return (
     <AuthLayout
@@ -91,16 +123,24 @@ function Login() {
       subtitle="Sign in using your ParkUTeM administrator account."
     >
       <form onSubmit={handleLogin} className="space-y-3.5 sm:space-y-4">
+        {/* =====================================================
+            EMAIL INPUT
+        ===================================================== */}
+
         <AuthInput
           label="Email Address"
           type="email"
           name="email"
           value={formData.email}
           onChange={handleChange}
-          placeholder="admin@parkutem.com"
+          placeholder="Enter admin email"
           icon="email"
           required
         />
+
+        {/* =====================================================
+            PASSWORD INPUT
+        ===================================================== */}
 
         <div className="relative">
           <AuthInput
@@ -129,24 +169,38 @@ function Login() {
           </button>
         </div>
 
-        <div className="flex items-center justify-between text-sm">
+        {/* =====================================================
+            LOGIN OPTIONS
+        ===================================================== */}
+
+        <div className="flex items-center justify-between gap-3 text-sm">
           <label className="flex items-center gap-2 font-medium text-slate-400">
             <input
               type="checkbox"
               checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
+              onChange={(event) => {
+                const isChecked = event.target.checked
+
+                setRememberMe(isChecked)
+
+                if (!isChecked) {
+                  localStorage.removeItem("parkutem_admin_remember")
+                  localStorage.removeItem("parkutem_admin_email")
+                }
+              }}
               className="h-4 w-4 rounded border-white/10 accent-cyan-300"
             />
             Remember me
           </label>
 
-          <button
-            type="button"
-            className="font-bold text-cyan-300 transition hover:text-cyan-200"
-          >
-            Forgot password?
-          </button>
+          <p className="text-xs font-semibold text-slate-500">
+            Admin access only
+          </p>
         </div>
+
+        {/* =====================================================
+            ERROR MESSAGE
+        ===================================================== */}
 
         {error && (
           <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
@@ -154,50 +208,32 @@ function Login() {
           </div>
         )}
 
+        {/* =====================================================
+            SUBMIT BUTTON
+        ===================================================== */}
+
         <button
           type="submit"
           disabled={isLoading}
           className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-cyan-300 px-5 py-3.5 font-black text-slate-950 shadow-[0_16px_38px_rgba(34,211,238,0.2)] transition hover:-translate-y-0.5 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isLoading ? "Signing in..." : "Sign In"}
+
           {!isLoading && (
             <ArrowRight className="h-5 w-5 transition group-hover:translate-x-1" />
           )}
         </button>
 
-        <button
-          type="button"
-          onClick={handleUseDemoAccount}
-          className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3.5 text-sm font-black text-slate-300 transition hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100"
-        >
-          Use Demo Admin Account
-        </button>
+        {/* =====================================================
+            ACCESS NOTE
+        ===================================================== */}
 
-        <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-2.5 sm:py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <p className="font-black uppercase tracking-[0.22em] text-slate-500">
-              Demo
-            </p>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-400">
-              <span>
-                Email:{" "}
-                <strong className="text-cyan-200">
-                  admin@parkutem.com
-                </strong>
-              </span>
-
-              <span>
-                Pass:{" "}
-                <strong className="text-cyan-200">password123</strong>
-              </span>
-            </div>
-          </div>
+        <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+          <p className="text-center text-xs leading-5 text-slate-500">
+            Only registered ParkUTeM administrators can access this dashboard.
+            Public registration is not available.
+          </p>
         </div>
-
-        <p className="text-center text-xs text-slate-500">
-          Admin access only. No public registration.
-        </p>
       </form>
     </AuthLayout>
   )

@@ -2,6 +2,8 @@
 // IMPORTS
 // =====================================================
 
+import { useEffect, useState } from "react"
+
 import StatCard from "../components/common/StatCard"
 
 import OccupancyByZoneChart from "../components/dashboard/OccupancyByZoneChart"
@@ -12,13 +14,81 @@ import RevenueBreakdownChart from "../components/dashboard/RevenueBreakdownChart
 
 import { dashboardStats } from "../data/dashboardData"
 
+import {
+  loadAdminDashboardStats,
+  subscribeToDashboardChanges,
+  unsubscribeFromDashboardChanges,
+} from "../services/adminDashboardService"
+
 // =====================================================
 // DASHBOARD PAGE
 // =====================================================
 
 function Dashboard() {
+  const [stats, setStats] = useState(dashboardStats)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
+  // =====================================================
+  // LOAD DASHBOARD STATS
+  // =====================================================
+
+  async function loadDashboardStats() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realStats = await loadAdminDashboardStats()
+
+      setStats(realStats)
+    } catch (error) {
+      console.error("Failed to load dashboard stats:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to load dashboard data from Supabase. Showing fallback data."
+      )
+
+      setStats(dashboardStats)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME
+  // =====================================================
+
+  useEffect(() => {
+    loadDashboardStats()
+
+    const channel = subscribeToDashboardChanges(() => {
+      loadDashboardStats()
+    })
+
+    return () => {
+      unsubscribeFromDashboardChanges(channel)
+    }
+  }, [])
+
   return (
     <div className="space-y-6">
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
+
+      {loadError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {loadError}
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+          Loading real dashboard overview from Supabase...
+        </div>
+      )}
+
       {/* =====================================================
           WELCOME PANEL
           ===================================================== */}
@@ -75,7 +145,7 @@ function Dashboard() {
           ===================================================== */}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {dashboardStats.map((stat) => (
+        {stats.map((stat) => (
           <StatCard key={stat.label} stat={stat} />
         ))}
       </section>

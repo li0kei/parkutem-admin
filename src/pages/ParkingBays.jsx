@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Car,
   CircleCheck,
@@ -25,17 +25,69 @@ import {
   sensorStatusOptions,
 } from "../data/parkingBays"
 
+import {
+  loadAdminParkingBays,
+  subscribeToParkingBays,
+  unsubscribeFromParkingBays,
+  updateParkingBayStatus,
+} from "../services/adminParkingBayService"
+
 // =====================================================
 // PARKING BAY MANAGEMENT PAGE
 // =====================================================
 
 function ParkingBays() {
   const [bayData, setBayData] = useState(parkingBays)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState("All Zones")
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedSensor, setSelectedSensor] = useState("All Sensors")
   const [selectedBay, setSelectedBay] = useState(null)
+
+    // =====================================================
+  // LOAD PARKING BAYS FROM SUPABASE
+  // =====================================================
+
+  async function loadBays() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realBays = await loadAdminParkingBays()
+
+      setBayData(realBays)
+    } catch (error) {
+      console.error("Failed to load parking bays:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to load parking bays from Supabase. Please check table access or schema."
+      )
+
+      setBayData(parkingBays)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadBays()
+
+    const channel = subscribeToParkingBays(() => {
+      loadBays()
+    })
+
+    return () => {
+      unsubscribeFromParkingBays(channel)
+    }
+  }, [])
 
   // =====================================================
   // FILTERED PARKING BAYS
@@ -46,9 +98,9 @@ function ParkingBays() {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
-        bay.bayNumber.toLowerCase().includes(searchValue) ||
-        bay.currentVehicle.toLowerCase().includes(searchValue) ||
-        bay.zone.toLowerCase().includes(searchValue)
+        String(bay.bayNumber || "").toLowerCase().includes(searchValue) ||
+        String(bay.currentVehicle || "").toLowerCase().includes(searchValue) ||
+        String(bay.zone || "").toLowerCase().includes(searchValue)
 
       const matchesZone =
         selectedZone === "All Zones" || bay.zone === selectedZone
@@ -85,32 +137,29 @@ function ParkingBays() {
   // UPDATE BAY STATUS
   // =====================================================
 
-  function handleUpdateBayStatus(bayId, newStatus) {
-    const updateBay = (bay) => {
-      if (bay.id !== bayId) {
-        return bay
-      }
+  async function handleUpdateBayStatus(bayId, newStatus) {
+    try {
+      const updatedBay = await updateParkingBayStatus(bayId, newStatus)
 
-      const shouldClearVehicle =
-        newStatus === "Available" || newStatus === "Maintenance"
+      setBayData((prev) =>
+        prev.map((bay) => (bay.id === bayId ? updatedBay : bay))
+      )
 
-      return {
-        ...bay,
-        status: newStatus,
-        currentVehicle: shouldClearVehicle ? "-" : bay.currentVehicle,
-        lastUpdated: "Just now",
-      }
+      setSelectedBay((prev) => {
+        if (!prev || prev.id !== bayId) {
+          return prev
+        }
+
+        return updatedBay
+      })
+    } catch (error) {
+      console.error("Failed to update bay status:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to update parking bay status in Supabase."
+      )
     }
-
-    setBayData((prev) => prev.map(updateBay))
-
-    setSelectedBay((prev) => {
-      if (!prev || prev.id !== bayId) {
-        return prev
-      }
-
-      return updateBay(prev)
-    })
   }
 
   // =====================================================
@@ -126,9 +175,26 @@ function ParkingBays() {
 
   return (
     <div className="space-y-6">
+
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
+
+          {loadError && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+              {loadError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+              Loading parking bay layout from Supabase...
+            </div>
+          )}
+
      {/* =====================================================
-    SUMMARY PANEL
-    ===================================================== */}
+          SUMMARY PANEL
+        ===================================================== */}
 
 <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
   <div className="relative p-4 sm:p-6">
@@ -147,8 +213,8 @@ function ParkingBays() {
       </div>
 
       <p className="hidden max-w-xl text-sm leading-6 text-slate-300 sm:block">
-        Live placeholder view for bay availability, sensor condition, and admin
-        monitoring.
+        Database bay layout for Zone A-D. IoT sensor updates will be connected
+        during the hardware integration phase.
       </p>
     </div>
 
@@ -270,7 +336,7 @@ function ParkingBays() {
           </div>
 
           <span className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700">
-            IoT Sensor Placeholder
+            Supabase Bay Layout
           </span>
         </div>
 
@@ -492,6 +558,7 @@ function SensorHealth({ status, battery }) {
     Online: "bg-emerald-500",
     Warning: "bg-orange-500",
     Offline: "bg-slate-400",
+    Placeholder: "bg-cyan-500",
   }
 
   return (
@@ -507,7 +574,9 @@ function SensorHealth({ status, battery }) {
       </div>
 
       <p className="mt-1 text-xs font-semibold text-slate-400">
-        Battery {battery}
+        {status === "Placeholder"
+          ? "IoT sensor not connected yet"
+          : `Battery ${battery}`}
       </p>
     </div>
   )

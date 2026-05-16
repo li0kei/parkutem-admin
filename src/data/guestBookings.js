@@ -1,188 +1,31 @@
 // =====================================================
-// GUEST BOOKING DUMMY DATA
+// GUEST BOOKING FILTER OPTIONS
+// Backend source: Supabase guest_bookings table
 // =====================================================
-
-export const guestBookings = [
-  {
-    id: 1,
-    bookingId: "GST-1001",
-    guestName: "Nur Aina",
-    email: "aina@gmail.com",
-    phone: "012-345 6789",
-    vehiclePlate: "MEL7788",
-    visitPurpose: "Meeting with faculty staff",
-    hostDepartment: "FTMK Office",
-    bayNumber: "V-01",
-    zone: "Visitor",
-    bookingDate: "15 May 2026",
-    startTime: "9:00 AM",
-    endTime: "12:00 PM",
-    duration: "3 hours",
-    parkingFee: 5.0,
-    paymentStatus: "Paid",
-    paymentMethod: "FPX",
-    receiptStatus: "Sent",
-    anprAccess: "Enabled",
-    entryStatus: "Entered",
-    entryTime: "15 May 2026, 9:05 AM",
-    exitTime: "-",
-    bookingStatus: "Active",
-    remarks:
-      "Guest paid successfully. Plate registered automatically for ANPR access.",
-  },
-  {
-    id: 2,
-    bookingId: "GST-1002",
-    guestName: "Daniel Tan",
-    email: "daniel.tan@mail.com",
-    phone: "011-889 1209",
-    vehiclePlate: "ABC9921",
-    visitPurpose: "Vendor visit",
-    hostDepartment: "Facilities Unit",
-    bayNumber: "V-03",
-    zone: "Visitor",
-    bookingDate: "15 May 2026",
-    startTime: "10:00 AM",
-    endTime: "1:00 PM",
-    duration: "3 hours",
-    parkingFee: 5.0,
-    paymentStatus: "Paid",
-    paymentMethod: "Card",
-    receiptStatus: "Sent",
-    anprAccess: "Enabled",
-    entryStatus: "Exited",
-    entryTime: "15 May 2026, 10:08 AM",
-    exitTime: "15 May 2026, 12:55 PM",
-    bookingStatus: "Completed",
-    remarks:
-      "Guest visit completed. ANPR entry and exit logs matched booking record.",
-  },
-  {
-    id: 3,
-    bookingId: "GST-1003",
-    guestName: "Farah Nabilah",
-    email: "farah.nabilah@mail.com",
-    phone: "017-778 4421",
-    vehiclePlate: "JKR8840",
-    visitPurpose: "Research discussion",
-    hostDepartment: "FKEKK",
-    bayNumber: "V-02",
-    zone: "Visitor",
-    bookingDate: "16 May 2026",
-    startTime: "2:00 PM",
-    endTime: "5:00 PM",
-    duration: "3 hours",
-    parkingFee: 5.0,
-    paymentStatus: "Paid",
-    paymentMethod: "TNG Placeholder",
-    receiptStatus: "Sent",
-    anprAccess: "Enabled",
-    entryStatus: "Not Entered",
-    entryTime: "-",
-    exitTime: "-",
-    bookingStatus: "Upcoming",
-    remarks:
-      "Upcoming paid guest booking. ANPR access will be valid during booking window.",
-  },
-  {
-    id: 4,
-    bookingId: "GST-1004",
-    guestName: "Mr. Raj Kumar",
-    email: "rajkumar@mail.com",
-    phone: "014-221 8890",
-    vehiclePlate: "WYY5510",
-    visitPurpose: "Event speaker",
-    hostDepartment: "Student Affairs",
-    bayNumber: "V-04",
-    zone: "Visitor",
-    bookingDate: "15 May 2026",
-    startTime: "8:00 PM",
-    endTime: "10:00 PM",
-    duration: "2 hours",
-    parkingFee: 5.0,
-    paymentStatus: "Pending",
-    paymentMethod: "FPX",
-    receiptStatus: "Not Sent",
-    anprAccess: "Not Enabled",
-    entryStatus: "Not Entered",
-    entryTime: "-",
-    exitTime: "-",
-    bookingStatus: "Upcoming",
-    remarks:
-      "Payment not completed. ANPR access is not enabled until payment success.",
-  },
-  {
-    id: 5,
-    bookingId: "GST-1005",
-    guestName: "Aisyah Rahim",
-    email: "aisyah.rahim@mail.com",
-    phone: "018-556 7321",
-    vehiclePlate: "JTN6677",
-    visitPurpose: "Parent visit",
-    hostDepartment: "Hostel Office",
-    bayNumber: "V-05",
-    zone: "Visitor",
-    bookingDate: "14 May 2026",
-    startTime: "11:00 AM",
-    endTime: "1:00 PM",
-    duration: "2 hours",
-    parkingFee: 5.0,
-    paymentStatus: "Refunded",
-    paymentMethod: "Card",
-    receiptStatus: "Sent",
-    anprAccess: "Blocked",
-    entryStatus: "Not Entered",
-    entryTime: "-",
-    exitTime: "-",
-    bookingStatus: "Cancelled",
-    remarks:
-      "Guest cancelled booking. Payment refund recorded and ANPR access blocked.",
-  },
-  {
-    id: 6,
-    bookingId: "GST-1006",
-    guestName: "Lee Mei Ling",
-    email: "meiling@mail.com",
-    phone: "016-221 4455",
-    vehiclePlate: "MCC8080",
-    visitPurpose: "Campus interview",
-    hostDepartment: "Human Resource",
-    bayNumber: "V-01",
-    zone: "Visitor",
-    bookingDate: "13 May 2026",
-    startTime: "9:00 AM",
-    endTime: "11:00 AM",
-    duration: "2 hours",
-    parkingFee: 5.0,
-    paymentStatus: "Paid",
-    paymentMethod: "FPX",
-    receiptStatus: "Sent",
-    anprAccess: "Expired",
-    entryStatus: "Exited",
-    entryTime: "13 May 2026, 9:03 AM",
-    exitTime: "13 May 2026, 10:50 AM",
-    bookingStatus: "Expired",
-    remarks:
-      "Booking window has expired. Plate no longer valid for guest ANPR access.",
-  },
-]
 
 export const guestBookingStatusOptions = [
   "All Status",
-  "Upcoming",
-  "Active",
-  "Completed",
-  "Cancelled",
+  "Pending Payment",
+  "Confirmed",
   "Expired",
+  "Cancelled",
 ]
+
+// =====================================================
+// GUEST PAYMENT STATUS OPTIONS
+// =====================================================
 
 export const guestPaymentStatusOptions = [
   "All Payments",
-  "Paid",
   "Pending",
+  "Paid",
   "Failed",
   "Refunded",
 ]
+
+// =====================================================
+// GUEST ANPR ACCESS OPTIONS
+// =====================================================
 
 export const guestAnprAccessOptions = [
   "All ANPR",
@@ -192,9 +35,23 @@ export const guestAnprAccessOptions = [
   "Blocked",
 ]
 
+// =====================================================
+// GUEST ENTRY STATUS OPTIONS
+// Entry/exit will be connected to ANPR logs later.
+// =====================================================
+
 export const guestEntryStatusOptions = [
   "All Entry",
   "Not Entered",
   "Entered",
   "Exited",
+  "Overstay",
 ]
+
+// =====================================================
+// LEGACY EMPTY FALLBACK
+// Dummy guest booking data has been removed after Supabase integration.
+// Keep this export temporarily so old imports do not break.
+// =====================================================
+
+export const guestBookings = []

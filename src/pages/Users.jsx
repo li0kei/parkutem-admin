@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   BadgeCheck,
   Briefcase,
@@ -25,17 +25,69 @@ import {
   users,
 } from "../data/users"
 
+import {
+  loadAdminUsers,
+  subscribeToUniversityUsers,
+  unsubscribeFromUniversityUsers,
+  updateUniversityUserAccountStatus,
+} from "../services/adminUserService"
+
 // =====================================================
 // STUDENT / STAFF MANAGEMENT PAGE
 // =====================================================
 
 function Users() {
   const [userData, setUserData] = useState(users)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedRole, setSelectedRole] = useState("All Roles")
   const [selectedSticker, setSelectedSticker] = useState("All Stickers")
   const [selectedAccount, setSelectedAccount] = useState("All Accounts")
   const [selectedUser, setSelectedUser] = useState(null)
+
+    // =====================================================
+  // LOAD USERS FROM SUPABASE
+  // =====================================================
+
+  async function loadUsers() {
+    setIsLoading(true)
+    setLoadError("")
+
+    try {
+      const realUsers = await loadAdminUsers()
+
+      setUserData(realUsers)
+    } catch (error) {
+      console.error("Failed to load users:", error)
+
+      setLoadError(
+        error.message ||
+          "Unable to load student/staff records from Supabase."
+      )
+
+      setUserData(users)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // =====================================================
+
+  useEffect(() => {
+    loadUsers()
+
+    const channel = subscribeToUniversityUsers(() => {
+      loadUsers()
+    })
+
+    return () => {
+      unsubscribeFromUniversityUsers(channel)
+    }
+  }, [])
 
   // =====================================================
   // FILTERED USERS
@@ -46,12 +98,12 @@ function Users() {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
-        user.universityId.toLowerCase().includes(searchValue) ||
-        user.name.toLowerCase().includes(searchValue) ||
-        user.email.toLowerCase().includes(searchValue) ||
-        user.faculty.toLowerCase().includes(searchValue) ||
-        user.department.toLowerCase().includes(searchValue) ||
-        user.vehiclePlate.toLowerCase().includes(searchValue)
+        String(user.universityId || "").toLowerCase().includes(searchValue) ||
+        String(user.name || "").toLowerCase().includes(searchValue) ||
+        String(user.email || "").toLowerCase().includes(searchValue) ||
+        String(user.faculty || "").toLowerCase().includes(searchValue) ||
+        String(user.department || "").toLowerCase().includes(searchValue) ||
+        String(user.vehiclePlate || "").toLowerCase().includes(searchValue)
 
       const matchesRole =
         selectedRole === "All Roles" || user.role === selectedRole
@@ -89,28 +141,31 @@ function Users() {
   // UPDATE ACCOUNT STATUS
   // =====================================================
 
-  function handleUpdateAccountStatus(userId, newStatus) {
-    const updateUser = (user) => {
-      if (user.id !== userId) {
-        return user
-      }
+  async function handleUpdateAccountStatus(userId, newStatus) {
+    try {
+      const updatedUser = await updateUniversityUserAccountStatus(
+        userId,
+        newStatus
+      )
 
-      return {
-        ...user,
-        accountStatus: newStatus,
-        lastActivity: "Just now",
-      }
+      setUserData((prev) =>
+        prev.map((user) => (user.id === userId ? updatedUser : user))
+      )
+
+      setSelectedUser((prev) => {
+        if (!prev || prev.id !== userId) {
+          return prev
+        }
+
+        return updatedUser
+      })
+    } catch (error) {
+      console.error("Failed to update account status:", error)
+
+      setLoadError(
+        error.message || "Unable to update account status in Supabase."
+      )
     }
-
-    setUserData((prev) => prev.map(updateUser))
-
-    setSelectedUser((prev) => {
-      if (!prev || prev.id !== userId) {
-        return prev
-      }
-
-      return updateUser(prev)
-    })
   }
 
   // =====================================================
@@ -126,6 +181,23 @@ function Users() {
 
   return (
     <div className="space-y-6">
+
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
+
+          {loadError && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+              {loadError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+              Loading student/staff records from Supabase...
+            </div>
+          )}
+
       {/* =====================================================
           SUMMARY PANEL
           ===================================================== */}
@@ -264,7 +336,7 @@ function Users() {
           </div>
 
           <span className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700">
-            Dummy University Data
+            Supabase University Users
           </span>
         </div>
 

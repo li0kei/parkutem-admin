@@ -165,8 +165,9 @@ function ReservationDetailModal({
               </div>
 
               <p className="mt-4 text-sm leading-6 text-slate-500">
-                This is a dummy admin action. Later, reservation status will be
-                updated from backend and ANPR session data.
+               This reservation status is saved to Supabase. Later, the mobile app,
+                wallet deduction, ANPR entry session, and IoT bay sensor updates will
+                automatically update this record.
               </p>
             </div>
           </div>
