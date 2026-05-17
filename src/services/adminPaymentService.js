@@ -425,6 +425,79 @@ export async function loadAdminPayments() {
 }
 
 // =====================================================
+// MAP ADMIN PAYMENT STATUS TO DATABASE STATUS
+// =====================================================
+
+function mapAdminStatusToDatabase(status) {
+  const statusMap = {
+    Pending: "pending",
+    Paid: "paid",
+    Failed: "failed",
+    Refunded: "refunded",
+  }
+
+  return statusMap[status] || normalizeText(status)
+}
+
+// =====================================================
+// UPDATE PAYMENT TRANSACTION STATUS
+// Source: payment_transactions
+// =====================================================
+
+export async function updatePaymentTransactionStatus(paymentId, newStatus) {
+  if (!paymentId) {
+    throw new Error("Payment ID is required.")
+  }
+
+  const databaseStatus = mapAdminStatusToDatabase(newStatus)
+
+  const updatePayload = {
+    payment_status: databaseStatus,
+  }
+
+  if (databaseStatus === "paid") {
+    updatePayload.paid_at = new Date().toISOString()
+  }
+
+  const { data, error } = await supabase
+    .from("payment_transactions")
+    .update(updatePayload)
+    .eq("id", paymentId)
+    .select(
+      `
+      id,
+      payer_user_id,
+      guest_booking_id,
+      reservation_id,
+      parking_session_id,
+      payment_type,
+      amount,
+      payment_method,
+      payment_status,
+      transaction_reference,
+      paid_at,
+      created_at,
+      guest_bookings (
+        booking_reference,
+        visitor_name,
+        email,
+        phone_number,
+        plate_number,
+        normalized_plate_number
+      )
+    `
+    )
+    .single()
+
+  if (error) {
+    console.error("Update payment transaction status error:", error)
+    throw new Error(error.message || "Failed to update payment status.")
+  }
+
+  return mapPaymentForAdmin(data)
+}
+
+// =====================================================
 // SUBSCRIBE TO PAYMENT CHANGES
 // =====================================================
 

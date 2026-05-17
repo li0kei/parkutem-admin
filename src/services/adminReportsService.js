@@ -543,53 +543,182 @@ function createLiveAlertsData({ anprLogs, issues, guestBookings }) {
     .slice(0, 8)
 }
 
-function createLiveParkingFlowData(anprLogs) {
+// =====================================================
+// CREATE LIVE PARKING FLOW DATA
+// Source: anpr_logs
+// Uses 5-minute buckets around the latest ANPR movement today.
+// This prevents the live graph from showing only one ugly hour label.
+// =====================================================
+
+function createLiveParkingFlowData(anprLogs = []) {
   const { startIso, endIso } = getTodayIsoRange()
 
-  const todayLogs = anprLogs.filter((log) =>
-    isWithinHalfOpenRange(log.detected_at, startIso, endIso)
-  )
+  const bucketSizeMinutes = 5
+  const windowMinutes = 60
 
-  const hourMap = {}
+  // =====================================================
+  // GET LOG EVENT TIME
+  // =====================================================
 
-  todayLogs.forEach((log) => {
-    const date = new Date(log.detected_at)
-
-    if (Number.isNaN(date.getTime())) {
-      return
-    }
-
-    const hour = `${String(date.getHours()).padStart(2, "0")}:00`
-
-    if (!hourMap[hour]) {
-      hourMap[hour] = {
-        time: hour,
-        entries: 0,
-        exits: 0,
-        active: 0,
-      }
+  function getLogEventTime(log) {
+    if (!log) {
+      return null
     }
 
     if (log.detection_type === "exit") {
-      hourMap[hour].exits += 1
+      return log.exit_time || log.detected_at || log.created_at
+    }
+
+    return log.entry_time || log.detected_at || log.created_at
+  }
+
+  // =====================================================
+  // FLOOR DATE TO 5-MINUTE BUCKET
+  // =====================================================
+
+  function floorToBucket(date) {
+    const bucketDate = new Date(date)
+    const minutes = bucketDate.getMinutes()
+    const flooredMinutes =
+      Math.floor(minutes / bucketSizeMinutes) * bucketSizeMinutes
+
+    bucketDate.setMinutes(flooredMinutes, 0, 0)
+
+    return bucketDate
+  }
+
+  // =====================================================
+  // FORMAT BUCKET LABEL
+  // =====================================================
+
+  function formatBucketLabel(date) {
+    return date.toLocaleTimeString("en-MY", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+  }
+
+  // =====================================================
+  // FILTER TODAY LOGS
+  // =====================================================
+
+  const todayLogs = anprLogs
+    .map((log) => ({
+      ...log,
+      event_time: getLogEventTime(log),
+    }))
+    .filter((log) => isWithinHalfOpenRange(log.event_time, startIso, endIso))
+    .sort((a, b) => new Date(a.event_time) - new Date(b.event_time))
+
+  // =====================================================
+  // USE LATEST TODAY LOG AS ANCHOR
+  // If no logs exist, use current time.
+  // =====================================================
+
+  const latestLog = todayLogs[todayLogs.length - 1]
+  const anchorDate = latestLog?.event_time
+    ? new Date(latestLog.event_time)
+    : new Date()
+
+  const windowEnd = floorToBucket(anchorDate)
+  const windowStart = new Date(
+    windowEnd.getTime() - windowMinutes * 60 * 1000
+  )
+
+  // =====================================================
+  // CREATE EMPTY 5-MINUTE BUCKETS
+  // =====================================================
+
+  const bucketMap = {}
+
+  for (
+    let cursor = new Date(windowStart);
+    cursor <= windowEnd;
+    cursor = new Date(cursor.getTime() + bucketSizeMinutes * 60 * 1000)
+  ) {
+    const key = cursor.toISOString()
+    const label = formatBucketLabel(cursor)
+
+    bucketMap[key] = {
+      time: label,
+      label,
+      entries: 0,
+      exits: 0,
+      active: 0,
+    }
+  }
+
+  // =====================================================
+  // GET ACTIVE COUNT BEFORE WINDOW START
+  // So active sessions do not reset to zero when graph window starts.
+  // =====================================================
+
+  let activeBeforeWindow = 0
+
+  todayLogs.forEach((log) => {
+    const eventTime = new Date(log.event_time)
+
+    if (Number.isNaN(eventTime.getTime())) {
       return
     }
 
-    hourMap[hour].entries += 1
+    if (eventTime >= windowStart) {
+      return
+    }
+
+    if (log.detection_type === "exit") {
+      activeBeforeWindow = Math.max(0, activeBeforeWindow - 1)
+      return
+    }
+
+    activeBeforeWindow += 1
   })
 
-  let active = 0
+  // =====================================================
+  // FILL BUCKETS WITH ENTRY / EXIT COUNTS
+  // =====================================================
 
-  return Object.values(hourMap)
-    .sort((a, b) => a.time.localeCompare(b.time))
-    .map((item) => {
-      active += item.entries - item.exits
+  todayLogs.forEach((log) => {
+    const eventTime = new Date(log.event_time)
 
-      return {
-        ...item,
-        active: Math.max(0, active),
-      }
-    })
+    if (Number.isNaN(eventTime.getTime())) {
+      return
+    }
+
+    if (eventTime < windowStart || eventTime > windowEnd) {
+      return
+    }
+
+    const bucketKey = floorToBucket(eventTime).toISOString()
+    const bucket = bucketMap[bucketKey]
+
+    if (!bucket) {
+      return
+    }
+
+    if (log.detection_type === "exit") {
+      bucket.exits += 1
+      return
+    }
+
+    bucket.entries += 1
+  })
+
+  // =====================================================
+  // CALCULATE ACTIVE COUNT OVER TIME
+  // =====================================================
+
+  let active = activeBeforeWindow
+
+  return Object.values(bucketMap).map((bucket) => {
+    active = Math.max(0, active + bucket.entries - bucket.exits)
+
+    return {
+      ...bucket,
+      active,
+    }
+  })
 }
 
 // =====================================================

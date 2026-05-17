@@ -23,8 +23,7 @@ function PagePlaceholder({ title, description }) {
 
       <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
         <p className="text-sm font-bold text-slate-600">
-          This page will use dummy data first. Backend integration will be added
-          later after the frontend is complete.
+          This module is reserved for future ParkUTeM system expansion.
         </p>
       </div>
     </div>

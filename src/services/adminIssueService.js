@@ -239,6 +239,74 @@ export async function updateSupportIssueStatus(issueReference, newStatus) {
 }
 
 // =====================================================
+// GENERATE ISSUE REFERENCE
+// =====================================================
+
+function generateIssueReference() {
+  const now = new Date()
+
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, "0")
+  const day = String(now.getDate()).padStart(2, "0")
+
+  const randomCode = Math.random().toString(16).slice(2, 6).toUpperCase()
+
+  return `ISS-${year}${month}${day}-${randomCode}`
+}
+
+// =====================================================
+// CREATE SUPPORT ISSUE
+// =====================================================
+
+export async function createSupportIssue(issueDraft) {
+  if (!issueDraft?.title) {
+    throw new Error("Issue title is required.")
+  }
+
+  if (!issueDraft?.description) {
+    throw new Error("Issue description is required.")
+  }
+
+  const insertPayload = {
+    issue_reference: generateIssueReference(),
+    title: issueDraft.title,
+    issue_type: mapIssueTypeToDatabase(issueDraft.type),
+    priority: String(issueDraft.priority || "Medium").toLowerCase(),
+    status: "open",
+
+    reporter_name: issueDraft.reporterName || "Admin",
+    reporter_type: "system",
+    reporter_email: issueDraft.reporterEmail || null,
+    reporter_phone: issueDraft.reporterPhone || null,
+
+    related_plate: issueDraft.relatedPlate || null,
+    related_bay: issueDraft.relatedBay || null,
+    related_booking_reference: issueDraft.relatedBookingReference || null,
+
+    description: issueDraft.description,
+    latest_note:
+      issueDraft.latestNote ||
+      "Issue manually created by admin from ParkUTeM admin portal.",
+    admin_notes:
+      issueDraft.adminNotes ||
+      "Manual admin-created support ticket.",
+  }
+
+  const { data, error } = await supabase
+    .from("support_issues")
+    .insert(insertPayload)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Create support issue error:", error)
+    throw new Error(error.message || "Failed to create support issue.")
+  }
+
+  return mapSupportIssueForAdmin(data)
+}
+
+// =====================================================
 // SUBSCRIBE TO SUPPORT ISSUE CHANGES
 // =====================================================
 

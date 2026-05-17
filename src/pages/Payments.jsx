@@ -17,7 +17,6 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import PaymentDetailModal from "../components/modals/PaymentDetailModal"
-import { loadAdminPayments } from "../services/adminPaymentService"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
@@ -27,8 +26,71 @@ import {
   paymentUserTypeOptions,
 } from "../data/payments"
 
+import {
+  loadAdminPayments,
+  updatePaymentTransactionStatus,
+} from "../services/adminPaymentService"
 
 
+// =====================================================
+// MONTH HELPERS
+// =====================================================
+
+function getCurrentMonthValue() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+
+  return `${year}-${month}`
+}
+
+function getPaymentDateValue(payment) {
+  return (
+    payment.raw?.paid_at ||
+    payment.raw?.created_at ||
+    payment.raw?.reservation_start_at ||
+    payment.raw?.updated_at ||
+    null
+  )
+}
+
+function isPaymentInSelectedMonth(payment, selectedMonth) {
+  if (!selectedMonth) {
+    return true
+  }
+
+  const paymentDateValue = getPaymentDateValue(payment)
+
+  if (!paymentDateValue) {
+    return false
+  }
+
+  const paymentDate = new Date(paymentDateValue)
+
+  if (Number.isNaN(paymentDate.getTime())) {
+    return false
+  }
+
+  const paymentMonth = `${paymentDate.getFullYear()}-${String(
+    paymentDate.getMonth() + 1
+  ).padStart(2, "0")}`
+
+  return paymentMonth === selectedMonth
+}
+
+function formatSelectedMonthLabel(selectedMonth) {
+  if (!selectedMonth) {
+    return "All months"
+  }
+
+  const [year, month] = selectedMonth.split("-")
+  const date = new Date(Number(year), Number(month) - 1, 1)
+
+  return date.toLocaleDateString("en-MY", {
+    month: "long",
+    year: "numeric",
+  })
+}
 
 // =====================================================
 // WALLET & PAYMENT TRANSACTIONS PAGE
@@ -45,6 +107,8 @@ function Payments() {
   const [selectedUserType, setSelectedUserType] = useState("All Users")
   const [selectedMethod, setSelectedMethod] = useState("All Methods")
   const [selectedPayment, setSelectedPayment] = useState(null)
+
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
 // =====================================================
 // LOAD PAYMENTS FROM SUPABASE
@@ -103,12 +167,22 @@ useAdminRealtimeRefresh({
   },
 })
 
+// =====================================================
+// MONTHLY PAYMENT DATA
+// =====================================================
+
+const monthlyPaymentData = useMemo(() => {
+  return paymentData.filter((payment) =>
+    isPaymentInSelectedMonth(payment, selectedMonth)
+  )
+}, [paymentData, selectedMonth])
+
   // =====================================================
   // FILTERED PAYMENTS
   // =====================================================
 
   const filteredPayments = useMemo(() => {
-    return paymentData.filter((payment) => {
+    return monthlyPaymentData.filter((payment) => {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
@@ -141,7 +215,7 @@ useAdminRealtimeRefresh({
       )
     })
   }, [
-    paymentData,
+    monthlyPaymentData,
     searchTerm,
     selectedType,
     selectedStatus,
@@ -149,88 +223,116 @@ useAdminRealtimeRefresh({
     selectedMethod,
   ])
 
-  // =====================================================
-  // SUMMARY COUNTS
-  // =====================================================
+// =====================================================
+// SUMMARY COUNTS
+// =====================================================
 
-  const summary = useMemo(() => {
-  const successfulRevenue = paymentData
+const summary = useMemo(() => {
+  const successfulRevenue = monthlyPaymentData
     .filter((payment) => payment.amount > 0)
     .filter((payment) => payment.status === "Paid")
     .reduce((total, payment) => total + payment.amount, 0)
 
-  const reservationRevenue = paymentData
+  const reservationRevenue = monthlyPaymentData
     .filter((payment) => payment.type === "Reservation Fee")
     .filter((payment) => payment.status === "Paid")
     .reduce((total, payment) => total + payment.amount, 0)
 
-  const parkingRevenue = paymentData
+  const parkingRevenue = monthlyPaymentData
     .filter((payment) => payment.type === "After 7PM Parking Fee")
     .filter((payment) => payment.status === "Paid")
     .reduce((total, payment) => total + payment.amount, 0)
 
-  const guestRevenue = paymentData
+  const guestRevenue = monthlyPaymentData
     .filter((payment) => payment.type === "Guest Parking Fee")
     .filter((payment) => payment.status === "Paid")
     .reduce((total, payment) => total + payment.amount, 0)
 
-  const refunds = paymentData
+  const refunds = monthlyPaymentData
     .filter((payment) => payment.status === "Refunded")
     .reduce((total, payment) => total + Math.abs(payment.amount), 0)
 
   return {
-    total: paymentData.length,
-    successful: paymentData.filter((payment) => payment.status === "Paid")
-      .length,
-    pending: paymentData.filter((payment) => payment.status === "Pending")
-      .length,
-    failed: paymentData.filter((payment) => payment.status === "Failed")
-      .length,
+    total: monthlyPaymentData.length,
+    successful: monthlyPaymentData.filter(
+      (payment) => payment.status === "Paid"
+    ).length,
+    pending: monthlyPaymentData.filter(
+      (payment) => payment.status === "Pending"
+    ).length,
+    failed: monthlyPaymentData.filter(
+      (payment) => payment.status === "Failed"
+    ).length,
     successfulRevenue,
     reservationRevenue,
     parkingRevenue,
     guestRevenue,
     refunds,
   }
-}, [paymentData])
+}, [monthlyPaymentData])
 
-  // =====================================================
-  // UPDATE PAYMENT STATUS
-  // =====================================================
+// =====================================================
+// UPDATE PAYMENT STATUS
+// Only real payment_transactions rows can be updated.
+// Reservation fallback rows are display-only.
+// =====================================================
 
-  function handleUpdateStatus(paymentId, newStatus) {
-    const updatePayment = (payment) => {
-      if (payment.id !== paymentId) {
-        return payment
-      }
+async function handleUpdateStatus(paymentId, newStatus) {
+  const currentPayment = paymentData.find((payment) => payment.id === paymentId)
 
-      return {
-        ...payment,
-        status: newStatus,
-      }
-    }
+  if (!currentPayment) {
+    return
+  }
 
-    setPaymentData((prev) => prev.map(updatePayment))
+  if (currentPayment.dataSource !== "payment_transactions") {
+    setLoadError(
+      "This payment is a reservation fallback row. It cannot be updated until reservation wallet deduction creates a real payment transaction."
+    )
+
+    return
+  }
+
+  setLoadError("")
+
+  try {
+    const updatedPayment = await updatePaymentTransactionStatus(
+      paymentId,
+      newStatus
+    )
+
+    setPaymentData((prev) =>
+      prev.map((payment) =>
+        payment.id === paymentId ? updatedPayment : payment
+      )
+    )
 
     setSelectedPayment((prev) => {
       if (!prev || prev.id !== paymentId) {
         return prev
       }
 
-      return updatePayment(prev)
+      return updatedPayment
     })
+  } catch (error) {
+    console.error("Failed to update payment status:", error)
+
+    setLoadError(
+      error.message || "Unable to update payment status in Supabase."
+    )
   }
+}
 
   // =====================================================
   // RESET FILTERS
   // =====================================================
 
-  function handleResetFilters() {
+ function handleResetFilters() {
     setSearchTerm("")
     setSelectedType("All Types")
     setSelectedStatus("All Status")
     setSelectedUserType("All Users")
     setSelectedMethod("All Methods")
+    setSelectedMonth(getCurrentMonthValue())
   }
 
   return (
@@ -323,6 +425,53 @@ useAdminRealtimeRefresh({
           </div>
         </div>
       </section>
+
+      {/* =====================================================
+            MONTH FILTER PANEL
+          ===================================================== */}
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  Payment Month
+                </p>
+
+                <h3 className="mt-2 text-xl font-black text-slate-950">
+                  {formatSelectedMonthLabel(selectedMonth)}
+                </h3>
+
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Revenue, transactions, and breakdown are filtered by selected month.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth(getCurrentMonthValue())}
+                  className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+                >
+                  This Month
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth("")}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+                >
+                  All Months
+                </button>
+              </div>
+            </div>
+          </section>
 
       {/* =====================================================
           REVENUE BREAKDOWN PANEL
@@ -423,7 +572,7 @@ useAdminRealtimeRefresh({
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Showing {filteredPayments.length} of {paymentData.length} transactions.
+              Showing {filteredPayments.length} of {monthlyPaymentData.length} transactions.
             </p>
           </div>
 
@@ -533,7 +682,7 @@ useAdminRealtimeRefresh({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Showing {filteredPayments.length} of {paymentData.length} transactions.
+            Showing {filteredPayments.length} of {monthlyPaymentData.length} transactions.
           </p>
         </div>
 

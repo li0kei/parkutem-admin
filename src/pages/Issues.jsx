@@ -13,16 +13,21 @@ import {
   Filter,
   LifeBuoy,
   Mail,
+  MapPin,
   ParkingCircle,
   Phone,
+  Plus,
   ScanLine,
   Search,
+  Ticket,
+  User,
   Wrench,
   X,
 } from "lucide-react"
 
 import StatusBadge from "../components/common/StatusBadge"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
+import IssueCreateModal from "../components/modals/IssueCreateModal"
 
 import {
   issuePriorities,
@@ -31,9 +36,69 @@ import {
 } from "../data/issues"
 
 import {
+  createSupportIssue,
   loadAdminSupportIssues,
   updateSupportIssueStatus,
 } from "../services/adminIssueService"
+
+// =====================================================
+// MONTH HELPERS
+// =====================================================
+
+function getCurrentMonthValue() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+
+  return `${year}-${month}`
+}
+
+function getIssueDateValue(ticket) {
+  return (
+    ticket.raw?.created_at ||
+    ticket.raw?.updated_at ||
+    ticket.raw?.resolved_at ||
+    null
+  )
+}
+
+function isIssueInSelectedMonth(ticket, selectedMonth) {
+  if (!selectedMonth) {
+    return true
+  }
+
+  const issueDateValue = getIssueDateValue(ticket)
+
+  if (!issueDateValue) {
+    return false
+  }
+
+  const issueDate = new Date(issueDateValue)
+
+  if (Number.isNaN(issueDate.getTime())) {
+    return false
+  }
+
+  const issueMonth = `${issueDate.getFullYear()}-${String(
+    issueDate.getMonth() + 1
+  ).padStart(2, "0")}`
+
+  return issueMonth === selectedMonth
+}
+
+function formatSelectedMonthLabel(selectedMonth) {
+  if (!selectedMonth) {
+    return "All months"
+  }
+
+  const [year, month] = selectedMonth.split("-")
+  const date = new Date(Number(year), Number(month) - 1, 1)
+
+  return date.toLocaleDateString("en-MY", {
+    month: "long",
+    year: "numeric",
+  })
+}
 
 // =====================================================
 // ISSUE / SUPPORT MANAGEMENT PAGE
@@ -41,6 +106,7 @@ import {
 
 function Issues() {
   const [tickets, setTickets] = useState([])
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -49,6 +115,7 @@ function Issues() {
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedPriority, setSelectedPriority] = useState("All Priority")
   const [selectedTicket, setSelectedTicket] = useState(null)
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
   // =====================================================
   // LOAD SUPPORT ISSUES FROM SUPABASE
@@ -111,12 +178,22 @@ function Issues() {
     },
   })
 
+// =====================================================
+// MONTHLY TICKET DATA
+// =====================================================
+
+const monthlyTickets = useMemo(() => {
+  return tickets.filter((ticket) =>
+    isIssueInSelectedMonth(ticket, selectedMonth)
+  )
+}, [tickets, selectedMonth])
+
   // =====================================================
   // FILTERED TICKETS
   // =====================================================
 
   const filteredTickets = useMemo(() => {
-    return tickets.filter((ticket) => {
+    return monthlyTickets.filter((ticket) => {
 
       const searchValue = searchTerm.toLowerCase()
 
@@ -138,24 +215,51 @@ function Issues() {
 
       return searchMatch && typeMatch && statusMatch && priorityMatch
     })
-  }, [tickets, searchTerm, selectedType, selectedStatus, selectedPriority])
+  }, [monthlyTickets, searchTerm, selectedType, selectedStatus, selectedPriority])
 
-  // =====================================================
-  // SUMMARY DATA
-  // =====================================================
+// =====================================================
+// SUMMARY DATA
+// =====================================================
 
-  const summary = useMemo(() => {
-    return {
-      total: tickets.length,
-      open: tickets.filter((ticket) => ticket.status === "Open").length,
-      inProgress: tickets.filter((ticket) => ticket.status === "In Progress")
-        .length,
-      resolved: tickets.filter((ticket) => ticket.status === "Resolved").length,
-      critical: tickets.filter((ticket) => ticket.priority === "Critical")
-        .length,
-      high: tickets.filter((ticket) => ticket.priority === "High").length,
-    }
-  }, [tickets])
+const summary = useMemo(() => {
+  return {
+    total: monthlyTickets.length,
+
+    open: monthlyTickets.filter((ticket) => ticket.status === "Open").length,
+
+    inProgress: monthlyTickets.filter(
+      (ticket) => ticket.status === "In Progress"
+    ).length,
+
+    resolved: monthlyTickets.filter((ticket) => ticket.status === "Resolved")
+      .length,
+
+    critical: monthlyTickets.filter((ticket) => ticket.priority === "Critical")
+      .length,
+
+    high: monthlyTickets.filter((ticket) => ticket.priority === "High").length,
+  }
+}, [monthlyTickets])
+
+// =====================================================
+// CREATE ISSUE
+// =====================================================
+
+async function handleCreateIssue(issueDraft) {
+  try {
+    const createdIssue = await createSupportIssue(issueDraft)
+
+    setTickets((currentTickets) => [createdIssue, ...currentTickets])
+  } catch (error) {
+    console.error("Failed to create support issue:", error)
+
+    setLoadError(
+      error.message || "Unable to create support issue in Supabase."
+    )
+
+    throw error
+  }
+}
 
   // =====================================================
   // UPDATE STATUS
@@ -194,6 +298,7 @@ function Issues() {
     setSelectedType("All Types")
     setSelectedStatus("All Status")
     setSelectedPriority("All Priority")
+    setSelectedMonth(getCurrentMonthValue())
   }
 
   return (
@@ -295,6 +400,54 @@ function Issues() {
       </section>
 
       {/* =====================================================
+              MONTH FILTER PANEL
+          ===================================================== */}
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  Issue Month
+                </p>
+
+                <h3 className="mt-2 text-xl font-black text-slate-950">
+                  {formatSelectedMonthLabel(selectedMonth)}
+                </h3>
+
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Support tickets, open issues, resolved cases, and priority counts are
+                  filtered by selected month.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth(getCurrentMonthValue())}
+                  className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+                >
+                  This Month
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth("")}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+                >
+                  All Months
+                </button>
+              </div>
+            </div>
+          </section>
+
+      {/* =====================================================
           FILTER BAR
           ===================================================== */}
 
@@ -360,13 +513,24 @@ function Issues() {
               Support Ticket List
             </h3>
             <p className="mt-1 text-sm text-slate-500">
-              Showing {filteredTickets.length} of {tickets.length} issue tickets.
+              Showing {filteredTickets.length} of {monthlyTickets.length} issue tickets.
             </p>
           </div>
 
-          <span className="w-fit rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-700">
-            Supabase Support Tickets
-          </span>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <span className="w-fit rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-700">
+              Supabase Support Tickets
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Create Issue
+            </button>
+          </div>
         </div>
 
         <div className="hidden overflow-x-auto xl:block">
@@ -416,7 +580,14 @@ function Issues() {
           onStatusChange={handleStatusChange}
         />
       )}
+
+      <IssueCreateModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreateIssue={handleCreateIssue}
+      />
     </div>
+    
   )
 }
 
@@ -546,10 +717,13 @@ function IssueTableRow({ ticket, onStatusChange, onView }) {
 
 function IssueMobileCard({ ticket, onStatusChange, onView }) {
   return (
-    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="font-black text-slate-950">{ticket.id}</p>
+        <div className="min-w-0">
+          <p className="break-words font-black text-slate-950">
+            {ticket.id}
+          </p>
+
           <p className="mt-1 text-sm leading-6 text-slate-500">
             {ticket.title}
           </p>
@@ -560,9 +734,12 @@ function IssueMobileCard({ ticket, onStatusChange, onView }) {
 
       <div className="mb-4 grid gap-3 text-sm text-slate-600">
         <InfoLine label="Type" value={ticket.type} />
-        <InfoLine label="Reporter" value={`${ticket.reportedBy} (${ticket.role})`} />
-        <InfoLine label="Plate" value={ticket.relatedPlate} />
-        <InfoLine label="Bay" value={ticket.relatedBay} />
+        <InfoLine
+          label="Reporter"
+          value={`${ticket.reportedBy || "-"} (${ticket.role || "-"})`}
+        />
+        <InfoLine label="Plate" value={ticket.relatedPlate || "-"} />
+        <InfoLine label="Bay" value={ticket.relatedBay || "-"} />
         <InfoLine label="Date" value={`${ticket.date}, ${ticket.time}`} />
       </div>
 
@@ -584,7 +761,7 @@ function IssueMobileCard({ ticket, onStatusChange, onView }) {
         <button
           type="button"
           onClick={onView}
-          className="h-11 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white"
+          className="h-11 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800"
         >
           View
         </button>
@@ -600,12 +777,17 @@ function IssueMobileCard({ ticket, onStatusChange, onView }) {
 function IssueDetailModal({ ticket, onClose, onStatusChange }) {
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl">
+        {/* =====================================================
+            HEADER
+            ===================================================== */}
+
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-6">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-600">
               Ticket Detail
             </p>
+
             <h3 className="mt-2 text-xl font-black text-slate-950">
               {ticket.id}
             </h3>
@@ -620,9 +802,17 @@ function IssueDetailModal({ ticket, onClose, onStatusChange }) {
           </button>
         </div>
 
+        {/* =====================================================
+            BODY
+            ===================================================== */}
+
         <div className="space-y-6 p-6">
+          {/* =====================================================
+              TITLE + BADGES
+              ===================================================== */}
+
           <div>
-            <h4 className="text-2xl font-black text-slate-950">
+            <h4 className="text-2xl font-black leading-tight text-slate-950">
               {ticket.title}
             </h4>
 
@@ -633,44 +823,108 @@ function IssueDetailModal({ ticket, onClose, onStatusChange }) {
             </div>
           </div>
 
+          {/* =====================================================
+              DESCRIPTION
+              ===================================================== */}
+
           <div className="rounded-[1.5rem] bg-slate-50 p-5">
             <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">
               Description
             </p>
-            <p className="mt-3 text-sm leading-7 text-slate-600">
-              {ticket.description}
+
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+              {ticket.description || "-"}
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <DetailBox icon={Mail} label="Email" value={ticket.email} />
-            <DetailBox icon={Phone} label="Phone" value={ticket.phone} />
-            <DetailBox
-              icon={ParkingCircle}
-              label="Vehicle Plate"
-              value={ticket.relatedPlate}
-            />
-            <DetailBox
-              icon={CalendarClock}
-              label="Reported"
-              value={`${ticket.date}, ${ticket.time}`}
-            />
+          {/* =====================================================
+              REPORTER INFO
+              ===================================================== */}
+
+          <div>
+            <p className="mb-3 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+              Reporter Information
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <DetailBox
+                icon={User}
+                label="Reporter Name"
+                value={ticket.reportedBy}
+              />
+
+              <DetailBox
+                icon={LifeBuoy}
+                label="Reporter Type"
+                value={ticket.role}
+              />
+
+              <DetailBox icon={Mail} label="Email" value={ticket.email} />
+
+              <DetailBox icon={Phone} label="Phone" value={ticket.phone} />
+            </div>
           </div>
+
+          {/* =====================================================
+              RELATED PARKING INFO
+              ===================================================== */}
+
+          <div>
+            <p className="mb-3 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+              Related Parking Information
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <DetailBox
+                icon={ParkingCircle}
+                label="Vehicle Plate"
+                value={ticket.relatedPlate}
+              />
+
+              <DetailBox
+                icon={MapPin}
+                label="Related Bay"
+                value={ticket.relatedBay}
+              />
+
+              <DetailBox
+                icon={Ticket}
+                label="Booking / Reservation Reference"
+                value={ticket.relatedBookingReference}
+              />
+
+              <DetailBox
+                icon={CalendarClock}
+                label="Reported"
+                value={`${ticket.date}, ${ticket.time}`}
+              />
+            </div>
+          </div>
+
+          {/* =====================================================
+              ADMIN NOTE
+              ===================================================== */}
 
           <div className="rounded-[1.5rem] border border-slate-200 p-5">
             <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">
               Latest Admin Note
             </p>
-            <p className="mt-3 text-sm leading-7 text-slate-600">
-              {ticket.latestNote}
+
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+              {ticket.latestNote || "-"}
             </p>
           </div>
+
+          {/* =====================================================
+              STATUS UPDATE
+              ===================================================== */}
 
           <div className="flex flex-col justify-between gap-3 rounded-[1.5rem] bg-slate-950 p-5 sm:flex-row sm:items-center">
             <div>
               <p className="text-sm font-bold text-slate-400">
                 Update Ticket Status
               </p>
+
               <p className="mt-1 text-lg font-black text-white">
                 Saved to Supabase
               </p>
@@ -740,6 +994,10 @@ function PriorityBadge({ priority }) {
   )
 }
 
+// =====================================================
+// DETAIL BOX
+// =====================================================
+
 function DetailBox({ icon: Icon, label, value }) {
   return (
     <div className="rounded-[1.5rem] border border-slate-200 p-5">
@@ -750,18 +1008,28 @@ function DetailBox({ icon: Icon, label, value }) {
       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
         {label}
       </p>
-      <p className="mt-2 font-bold text-slate-800">{value}</p>
+
+      <p className="mt-2 break-words font-bold text-slate-800">
+        {value || "-"}
+      </p>
     </div>
   )
 }
+
+// =====================================================
+// INFO LINE
+// =====================================================
 
 function InfoLine({ label, value }) {
   return (
     <div className="flex justify-between gap-3">
       <span className="font-bold text-slate-400">{label}</span>
-      <span className="text-right font-black text-slate-800">{value}</span>
+      <span className="break-words text-right font-black text-slate-800">
+        {value || "-"}
+      </span>
     </div>
   )
 }
 
 export default Issues
+

@@ -27,6 +27,65 @@ import {
 
 
 // =====================================================
+// MONTH HELPERS
+// =====================================================
+
+function getCurrentMonthValue() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+
+  return `${year}-${month}`
+}
+
+function getAnprLogDateValue(log) {
+  return (
+    log.raw?.detected_at ||
+    log.raw?.entry_time ||
+    log.raw?.exit_time ||
+    null
+  )
+}
+
+function isAnprLogInSelectedMonth(log, selectedMonth) {
+  if (!selectedMonth) {
+    return true
+  }
+
+  const logDateValue = getAnprLogDateValue(log)
+
+  if (!logDateValue) {
+    return false
+  }
+
+  const logDate = new Date(logDateValue)
+
+  if (Number.isNaN(logDate.getTime())) {
+    return false
+  }
+
+  const logMonth = `${logDate.getFullYear()}-${String(
+    logDate.getMonth() + 1
+  ).padStart(2, "0")}`
+
+  return logMonth === selectedMonth
+}
+
+function formatSelectedMonthLabel(selectedMonth) {
+  if (!selectedMonth) {
+    return "All months"
+  }
+
+  const [year, month] = selectedMonth.split("-")
+  const date = new Date(Number(year), Number(month) - 1, 1)
+
+  return date.toLocaleDateString("en-MY", {
+    month: "long",
+    year: "numeric",
+  })
+}
+
+// =====================================================
 // ANPR LOGS PAGE
 // =====================================================
 
@@ -39,6 +98,7 @@ function ANPRLogs() {
   const [selectedStatus, setSelectedStatus] = useState("All Status")
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedGate, setSelectedGate] = useState("All Gates")
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
   // =====================================================
   // LOAD ANPR LOGS FROM SUPABASE
@@ -101,12 +161,20 @@ function ANPRLogs() {
       },
     })
 
+// =====================================================
+// MONTHLY ANPR LOG DATA
+// =====================================================
+
+const monthlyLogData = useMemo(() => {
+  return logData.filter((log) => isAnprLogInSelectedMonth(log, selectedMonth))
+}, [logData, selectedMonth])
+
   // =====================================================
   // FILTERED LOGS
   // =====================================================
 
   const filteredLogs = useMemo(() => {
-    return logData.filter((log) => {
+    return monthlyLogData.filter((log) => {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
@@ -126,34 +194,40 @@ function ANPRLogs() {
 
       return matchesSearch && matchesStatus && matchesUserType && matchesGate
     })
-  }, [logData, searchTerm, selectedStatus, selectedUserType, selectedGate])
+  }, [monthlyLogData, searchTerm, selectedStatus, selectedUserType, selectedGate])
 
-  // =====================================================
-  // SUMMARY COUNTS
-  // =====================================================
+// =====================================================
+// SUMMARY COUNTS
+// =====================================================
 
-  const summary = useMemo(() => {
-    return {
-      total: logData.length,
-      approved: logData.filter((log) => log.status === "Approved").length,
-      flagged: logData.filter((log) => log.status === "Flagged").length,
-      unknown: logData.filter((log) => log.status === "Unknown").length,
-      guests: logData.filter((log) => log.userType === "Guest").length,
-      active: logData.filter(
-        (log) => log.exitTime === "-" && log.status === "Approved"
-      ).length,
-    }
-  }, [logData])
+const summary = useMemo(() => {
+  return {
+    total: monthlyLogData.length,
+
+    approved: monthlyLogData.filter((log) => log.status === "Approved").length,
+
+    flagged: monthlyLogData.filter((log) => log.status === "Flagged").length,
+
+    unknown: monthlyLogData.filter((log) => log.status === "Unknown").length,
+
+    guests: monthlyLogData.filter((log) => log.userType === "Guest").length,
+
+    active: monthlyLogData.filter(
+      (log) => log.exitTime === "-" && log.status === "Approved"
+    ).length,
+  }
+}, [monthlyLogData])
 
   // =====================================================
   // RESET FILTERS
   // =====================================================
 
-  function handleResetFilters() {
+ function handleResetFilters() {
     setSearchTerm("")
     setSelectedStatus("All Status")
     setSelectedUserType("All Types")
     setSelectedGate("All Gates")
+    setSelectedMonth(getCurrentMonthValue())
   }
 
   return (
@@ -248,6 +322,54 @@ function ANPRLogs() {
       </section>
 
       {/* =====================================================
+            MONTH FILTER PANEL
+          ===================================================== */}
+
+        <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                ANPR Log Month
+              </p>
+
+              <h3 className="mt-2 text-xl font-black text-slate-950">
+                {formatSelectedMonthLabel(selectedMonth)}
+              </h3>
+
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                Detection logs, approved access, guest entries, and active sessions are
+                filtered by selected month.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              />
+
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(getCurrentMonthValue())}
+                className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+              >
+                This Month
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedMonth("")}
+                className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+              >
+                All Months
+              </button>
+            </div>
+          </div>
+        </section>
+
+      {/* =====================================================
           FILTER PANEL
           ===================================================== */}
 
@@ -308,7 +430,7 @@ function ANPRLogs() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-             Showing {filteredLogs.length} of {logData.length} vehicle logs.
+             Showing {filteredLogs.length} of {monthlyLogData.length} vehicle logs.
             </p>
           </div>
 
@@ -415,7 +537,7 @@ function ANPRLogs() {
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Showing {filteredLogs.length} of {logData.length} logs.
+            Showing {filteredLogs.length} of {monthlyLogData.length} logs.
           </p>
         </div>
 

@@ -3,8 +3,9 @@
 // =====================================================
 
 import { useLocation } from "react-router"
-import { Bell, Menu, ShieldCheck } from "lucide-react"
+import { Menu, ShieldCheck } from "lucide-react"
 
+import AdminNotificationBell from "./AdminNotificationBell"
 import { getCurrentAdmin } from "../../utils/auth"
 
 // =====================================================
@@ -124,14 +125,7 @@ function Topbar({ setIsMobileOpen }) {
             ===================================================== */}
 
         <div className="flex shrink-0 items-center gap-3">
-          <button
-            type="button"
-            className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-cyan-500" />
-          </button>
+          <AdminNotificationBell />
 
           <div className="hidden items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:flex">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-cyan-300">

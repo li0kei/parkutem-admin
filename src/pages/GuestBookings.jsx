@@ -30,6 +30,66 @@ import {
 import { loadAdminGuestBookings } from "../services/adminGuestBookingService"
 
 // =====================================================
+// MONTH HELPERS
+// =====================================================
+
+function getCurrentMonthValue() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+
+  return `${year}-${month}`
+}
+
+function getGuestBookingDateValue(booking) {
+  return (
+    booking.raw?.created_at ||
+    booking.raw?.paid_at ||
+    booking.raw?.confirmed_at ||
+    booking.raw?.visit_start_at ||
+    null
+  )
+}
+
+function isGuestBookingInSelectedMonth(booking, selectedMonth) {
+  if (!selectedMonth) {
+    return true
+  }
+
+  const bookingDateValue = getGuestBookingDateValue(booking)
+
+  if (!bookingDateValue) {
+    return false
+  }
+
+  const bookingDate = new Date(bookingDateValue)
+
+  if (Number.isNaN(bookingDate.getTime())) {
+    return false
+  }
+
+  const bookingMonth = `${bookingDate.getFullYear()}-${String(
+    bookingDate.getMonth() + 1
+  ).padStart(2, "0")}`
+
+  return bookingMonth === selectedMonth
+}
+
+function formatSelectedMonthLabel(selectedMonth) {
+  if (!selectedMonth) {
+    return "All months"
+  }
+
+  const [year, month] = selectedMonth.split("-")
+  const date = new Date(Number(year), Number(month) - 1, 1)
+
+  return date.toLocaleDateString("en-MY", {
+    month: "long",
+    year: "numeric",
+  })
+}
+
+// =====================================================
 // GUEST BOOKING MANAGEMENT PAGE
 // =====================================================
 
@@ -46,6 +106,7 @@ function GuestBookings() {
   const [selectedAnprAccess, setSelectedAnprAccess] = useState("All ANPR")
   const [selectedEntryStatus, setSelectedEntryStatus] = useState("All Entry")
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
 // =====================================================
 // LOAD GUEST BOOKINGS
@@ -104,12 +165,22 @@ function GuestBookings() {
     },
   })
 
+// =====================================================
+// MONTHLY BOOKING DATA
+// =====================================================
+
+const monthlyBookingData = useMemo(() => {
+  return bookingData.filter((booking) =>
+    isGuestBookingInSelectedMonth(booking, selectedMonth)
+  )
+}, [bookingData, selectedMonth])
+
   // =====================================================
   // FILTERED BOOKINGS
   // =====================================================
 
   const filteredBookings = useMemo(() => {
-    return bookingData.filter((booking) => {
+    return monthlyBookingData.filter((booking) => {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
@@ -140,7 +211,7 @@ function GuestBookings() {
       return matchesSearch && matchesBookingStatus && matchesPayment && matchesAnpr && matchesEntry
     })
   }, [
-    bookingData,
+    monthlyBookingData,
     searchTerm,
     selectedBookingStatus,
     selectedPaymentStatus,
@@ -148,39 +219,41 @@ function GuestBookings() {
     selectedEntryStatus,
   ])
 
-  // =====================================================
-  // SUMMARY COUNTS
-  // =====================================================
+// =====================================================
+// SUMMARY COUNTS
+// =====================================================
 
-  const summary = useMemo(() => {
-    const guestRevenue = bookingData
-      .filter((booking) => booking.paymentStatus === "Paid")
-      .reduce((total, booking) => total + booking.parkingFee, 0)
+const summary = useMemo(() => {
+  const guestRevenue = monthlyBookingData
+    .filter((booking) => booking.paymentStatus === "Paid")
+    .reduce((total, booking) => total + booking.parkingFee, 0)
 
-    return {
-        total: bookingData.length,
-        paid: bookingData.filter((booking) => booking.paymentStatus === "Paid")
-          .length,
+  return {
+    total: monthlyBookingData.length,
 
-        confirmed: bookingData.filter(
-          (booking) => booking.bookingStatus === "Confirmed"
-        ).length,
+    paid: monthlyBookingData.filter(
+      (booking) => booking.paymentStatus === "Paid"
+    ).length,
 
-        anprActive: bookingData.filter(
-          (booking) => booking.anprAccess === "Enabled"
-        ).length,
+    confirmed: monthlyBookingData.filter(
+      (booking) => booking.bookingStatus === "Confirmed"
+    ).length,
 
-        anprEnabled: bookingData.filter(
-          (booking) => booking.anprAccess === "Enabled"
-        ).length,
+    anprActive: monthlyBookingData.filter(
+      (booking) => booking.anprAccess === "Enabled"
+    ).length,
 
-        entered: bookingData.filter((booking) =>
-          ["Entered", "Overstay", "Exited"].includes(booking.entryStatus)
-        ).length,
+    anprEnabled: monthlyBookingData.filter(
+      (booking) => booking.anprAccess === "Enabled"
+    ).length,
 
-        guestRevenue,
-      }
-  }, [bookingData])
+    entered: monthlyBookingData.filter((booking) =>
+      ["Entered", "Overstay", "Exited"].includes(booking.entryStatus)
+    ).length,
+
+    guestRevenue,
+  }
+}, [monthlyBookingData])
 
   // =====================================================
   // UPDATE BOOKING STATUS
@@ -248,12 +321,13 @@ function GuestBookings() {
   // RESET FILTERS
   // =====================================================
 
-  function handleResetFilters() {
+ function handleResetFilters() {
     setSearchTerm("")
     setSelectedBookingStatus("All Status")
     setSelectedPaymentStatus("All Payments")
     setSelectedAnprAccess("All ANPR")
     setSelectedEntryStatus("All Entry")
+    setSelectedMonth(getCurrentMonthValue())
   }
 
   return (
@@ -345,6 +419,54 @@ function GuestBookings() {
           </div>
         </div>
       </section>
+
+      {/* =====================================================
+              MONTH FILTER PANEL
+          ===================================================== */}
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  Guest Booking Month
+                </p>
+
+                <h3 className="mt-2 text-xl font-black text-slate-950">
+                  {formatSelectedMonthLabel(selectedMonth)}
+                </h3>
+
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Guest bookings, ANPR access, entry status, and guest revenue are filtered
+                  by selected month.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth(getCurrentMonthValue())}
+                  className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+                >
+                  This Month
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth("")}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+                >
+                  All Months
+                </button>
+              </div>
+            </div>
+          </section>
 
       {/* =====================================================
           RULE PANEL
@@ -454,7 +576,7 @@ function GuestBookings() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Showing {filteredBookings.length} of {bookingData.length} guest bookings.
+              Showing {filteredBookings.length} of {monthlyBookingData.length} guest bookings.
             </p>
           </div>
 
@@ -583,7 +705,7 @@ function GuestBookings() {
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Showing {filteredBookings.length} of {bookingData.length} guest bookings.
+            Showing {filteredBookings.length} of {monthlyBookingData.length} guest bookings.
           </p>
         </div>
 

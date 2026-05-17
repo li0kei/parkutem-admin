@@ -2,9 +2,8 @@
 // IMPORTS
 // =====================================================
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
-  BellRing,
   Camera,
   CheckCircle2,
   Clock,
@@ -20,51 +19,153 @@ import {
 } from "lucide-react"
 
 import {
-  adminProfile,
-  anprPolicy,
-  guestPolicy,
-  parkingPolicy,
-  reservationPolicy,
-  systemPreferences,
-} from "../data/settings"
+  defaultAdminSettings,
+  loadAdminSettings,
+  resetAdminSettings,
+  saveAdminSettings,
+  subscribeToSettings,
+  unsubscribeFromSettings,
+} from "../services/adminSettingsService"
 
 // =====================================================
 // SETTINGS PAGE
 // =====================================================
 
 function Settings() {
-  const [profile, setProfile] = useState(adminProfile)
-  const [parking, setParking] = useState(parkingPolicy)
-  const [reservation, setReservation] = useState(reservationPolicy)
-  const [guest, setGuest] = useState(guestPolicy)
-  const [anpr, setAnpr] = useState(anprPolicy)
-  const [preferences, setPreferences] = useState(systemPreferences)
+  const [profile, setProfile] = useState(defaultAdminSettings.adminProfile)
+  const [parking, setParking] = useState(defaultAdminSettings.parkingPolicy)
+  const [reservation, setReservation] = useState(
+    defaultAdminSettings.reservationPolicy
+  )
+  const [guest, setGuest] = useState(defaultAdminSettings.guestPolicy)
+  const [anpr, setAnpr] = useState(defaultAdminSettings.anprPolicy)
+  const [preferences, setPreferences] = useState(
+    defaultAdminSettings.systemPreferences
+  )
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [loadError, setLoadError] = useState("")
   const [savedMessage, setSavedMessage] = useState("")
 
   // =====================================================
-  // SAVE / RESET DUMMY ACTIONS
+  // APPLY SETTINGS TO STATE
   // =====================================================
 
-  function handleSave() {
-    setSavedMessage("Settings saved successfully. Dummy frontend action only.")
-
-    setTimeout(() => {
-      setSavedMessage("")
-    }, 2500)
+  function applySettings(settings) {
+    setProfile(settings.adminProfile)
+    setParking(settings.parkingPolicy)
+    setReservation(settings.reservationPolicy)
+    setGuest(settings.guestPolicy)
+    setAnpr(settings.anprPolicy)
+    setPreferences(settings.systemPreferences)
   }
 
-  function handleReset() {
-    setProfile(adminProfile)
-    setParking(parkingPolicy)
-    setReservation(reservationPolicy)
-    setGuest(guestPolicy)
-    setAnpr(anprPolicy)
-    setPreferences(systemPreferences)
-    setSavedMessage("Settings reset to default dummy configuration.")
+  // =====================================================
+  // GET CURRENT SETTINGS PAYLOAD
+  // =====================================================
 
-    setTimeout(() => {
-      setSavedMessage("")
-    }, 2500)
+  function getCurrentSettingsPayload() {
+    return {
+      adminProfile: profile,
+      parkingPolicy: parking,
+      reservationPolicy: reservation,
+      guestPolicy: guest,
+      anprPolicy: anpr,
+      systemPreferences: preferences,
+    }
+  }
+
+  // =====================================================
+  // LOAD SETTINGS FROM SUPABASE
+  // =====================================================
+
+  async function loadSettings({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
+    setLoadError("")
+
+    try {
+      const settings = await loadAdminSettings()
+      applySettings(settings)
+    } catch (error) {
+      console.error("Failed to load settings:", error)
+      setLoadError(error.message || "Unable to load settings from Supabase.")
+    } finally {
+      if (!silent) {
+        setIsLoading(false)
+      }
+    }
+  }
+
+  // =====================================================
+  // INITIAL LOAD + REALTIME
+  // =====================================================
+
+  useEffect(() => {
+    loadSettings()
+
+    const channel = subscribeToSettings(() => {
+      loadSettings({ silent: true })
+    })
+
+    return () => {
+      unsubscribeFromSettings(channel)
+    }
+  }, [])
+
+  // =====================================================
+  // SAVE SETTINGS
+  // =====================================================
+
+  async function handleSave() {
+    setIsSaving(true)
+    setLoadError("")
+    setSavedMessage("")
+
+    try {
+      const savedSettings = await saveAdminSettings(getCurrentSettingsPayload())
+
+      applySettings(savedSettings)
+      setSavedMessage("Settings saved successfully to Supabase.")
+
+      setTimeout(() => {
+        setSavedMessage("")
+      }, 2500)
+    } catch (error) {
+      console.error("Failed to save settings:", error)
+      setLoadError(error.message || "Unable to save settings to Supabase.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // =====================================================
+  // RESET SETTINGS
+  // =====================================================
+
+  async function handleReset() {
+    setIsSaving(true)
+    setLoadError("")
+    setSavedMessage("")
+
+    try {
+      const resetSettings = await resetAdminSettings()
+
+      applySettings(resetSettings)
+      setSavedMessage("Settings reset to default Supabase configuration.")
+
+      setTimeout(() => {
+        setSavedMessage("")
+      }, 2500)
+    } catch (error) {
+      console.error("Failed to reset settings:", error)
+      setLoadError(error.message || "Unable to reset settings.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -98,7 +199,8 @@ function Settings() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-5 py-3 text-sm font-black text-slate-200 transition hover:bg-white/10"
+                disabled={isSaving || isLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-5 py-3 text-sm font-black text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCcw className="h-4 w-4" />
                 Reset
@@ -107,15 +209,32 @@ function Settings() {
               <button
                 type="button"
                 onClick={handleSave}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200"
+                disabled={isSaving || isLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Save className="h-4 w-4" />
-                Save Settings
+                {isSaving ? "Saving..." : "Save Settings"}
               </button>
             </div>
           </div>
         </div>
       </section>
+
+      {/* =====================================================
+          SUPABASE STATUS
+          ===================================================== */}
+
+      {loadError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-black text-amber-700">
+          {loadError}
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4 text-sm font-black text-cyan-700">
+          Loading system settings from Supabase...
+        </div>
+      )}
 
       {savedMessage && (
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-sm font-black text-emerald-700">
@@ -287,7 +406,7 @@ function Settings() {
           <div className="mt-5">
             <ToggleRow
               label="Allow Reservation Extension"
-              description="Dummy option for future mobile app reservation extension."
+              description="Future mobile app reservation extension option."
               checked={reservation.allowExtension}
               onChange={(value) =>
                 setReservation({ ...reservation, allowExtension: value })
@@ -318,6 +437,27 @@ function Settings() {
                 setGuest({ ...guest, guestParkingRateUnit: value })
               }
             />
+
+            <TextInput
+              label="No-Show Grace (Minutes)"
+              type="number"
+              value={guest.noShowGraceMinutes}
+              onChange={(value) =>
+                setGuest({ ...guest, noShowGraceMinutes: Number(value) })
+              }
+            />
+
+            <TextInput
+              label="Overstay Email After (Minutes)"
+              type="number"
+              value={guest.overstayEmailAfterMinutes}
+              onChange={(value) =>
+                setGuest({
+                  ...guest,
+                  overstayEmailAfterMinutes: Number(value),
+                })
+              }
+            />
           </div>
 
           <div className="mt-5 space-y-3">
@@ -344,7 +484,7 @@ function Settings() {
 
             <ToggleRow
               label="Send Receipt Email"
-              description="Placeholder for future email receipt integration."
+              description="Send receipt email after successful guest payment."
               checked={guest.sendReceiptEmail}
               onChange={(value) =>
                 setGuest({ ...guest, sendReceiptEmail: value })
@@ -353,18 +493,16 @@ function Settings() {
 
             <ToggleRow
               label="Send QR Email"
-              description="Optional future feature. Current guest access relies on ANPR plate registration."
+              description="Optional feature. Current guest access relies on ANPR plate registration."
               checked={guest.sendQrEmail}
-              onChange={(value) =>
-                setGuest({ ...guest, sendQrEmail: value })
-              }
+              onChange={(value) => setGuest({ ...guest, sendQrEmail: value })}
             />
           </div>
         </SettingsCard>
 
         <SettingsCard
           title="ANPR & Sensor Settings"
-          subtitle="Dummy system checks for plate detection, unknown plates, and camera health."
+          subtitle="System checks for plate detection, unknown plates, and camera health."
           icon={Camera}
         >
           <div className="mb-5">
@@ -408,7 +546,7 @@ function Settings() {
 
             <ToggleRow
               label="Camera Health Check"
-              description="Placeholder for ANPR camera online/offline monitoring."
+              description="Future ANPR camera online/offline monitoring."
               checked={anpr.cameraHealthCheck}
               onChange={(value) =>
                 setAnpr({ ...anpr, cameraHealthCheck: value })
@@ -419,13 +557,13 @@ function Settings() {
 
         <SettingsCard
           title="System Preferences"
-          subtitle="Dummy notification and system behaviour settings."
+          subtitle="Notification and system behaviour settings."
           icon={SlidersHorizontal}
         >
           <div className="space-y-3">
             <ToggleRow
               label="Maintenance Mode"
-              description="Disable public-facing operations temporarily. Dummy only."
+              description="Disable public-facing operations temporarily."
               checked={preferences.maintenanceMode}
               onChange={(value) =>
                 setPreferences({ ...preferences, maintenanceMode: value })
@@ -485,8 +623,9 @@ function Settings() {
             <h3 className="text-xl font-black text-slate-950">
               Active Policy Summary
             </h3>
+
             <p className="mt-1 text-sm text-slate-500">
-              Quick explanation of current dummy configuration.
+              Quick explanation of current Supabase configuration.
             </p>
           </div>
         </div>
@@ -555,7 +694,7 @@ function TextInput({ label, value, onChange, type = "text" }) {
 
       <input
         type={type}
-        value={value}
+        value={value ?? ""}
         onChange={(event) => onChange(event.target.value)}
         className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
       />

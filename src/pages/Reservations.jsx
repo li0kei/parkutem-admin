@@ -32,6 +32,65 @@ import {
 } from "../services/adminReservationService"
 
 // =====================================================
+// MONTH HELPERS
+// =====================================================
+
+function getCurrentMonthValue() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+
+  return `${year}-${month}`
+}
+
+function getReservationDateValue(reservation) {
+  return (
+    reservation.raw?.reservation_start_at ||
+    reservation.raw?.created_at ||
+    reservation.raw?.updated_at ||
+    null
+  )
+}
+
+function isReservationInSelectedMonth(reservation, selectedMonth) {
+  if (!selectedMonth) {
+    return true
+  }
+
+  const reservationDateValue = getReservationDateValue(reservation)
+
+  if (!reservationDateValue) {
+    return false
+  }
+
+  const reservationDate = new Date(reservationDateValue)
+
+  if (Number.isNaN(reservationDate.getTime())) {
+    return false
+  }
+
+  const reservationMonth = `${reservationDate.getFullYear()}-${String(
+    reservationDate.getMonth() + 1
+  ).padStart(2, "0")}`
+
+  return reservationMonth === selectedMonth
+}
+
+function formatSelectedMonthLabel(selectedMonth) {
+  if (!selectedMonth) {
+    return "All months"
+  }
+
+  const [year, month] = selectedMonth.split("-")
+  const date = new Date(Number(year), Number(month) - 1, 1)
+
+  return date.toLocaleDateString("en-MY", {
+    month: "long",
+    year: "numeric",
+  })
+}
+
+// =====================================================
 // RESERVATION MANAGEMENT PAGE
 // =====================================================
 
@@ -45,6 +104,8 @@ function Reservations() {
   const [selectedZone, setSelectedZone] = useState("All Zones")
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedReservation, setSelectedReservation] = useState(null)
+
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
 // =====================================================
 // LOAD RESERVATIONS FROM SUPABASE
@@ -106,12 +167,22 @@ useAdminRealtimeRefresh({
   },
 })
 
+// =====================================================
+// MONTHLY RESERVATION DATA
+// =====================================================
+
+const monthlyReservationData = useMemo(() => {
+  return reservationData.filter((reservation) =>
+    isReservationInSelectedMonth(reservation, selectedMonth)
+  )
+}, [reservationData, selectedMonth])
+
   // =====================================================
   // FILTERED RESERVATIONS
   // =====================================================
 
   const filteredReservations = useMemo(() => {
-    return reservationData.filter((reservation) => {
+    return monthlyReservationData.filter((reservation) => {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
@@ -141,37 +212,50 @@ useAdminRealtimeRefresh({
 
       return matchesSearch && matchesStatus && matchesZone && matchesUserType
     })
-  }, [reservationData, searchTerm, selectedStatus, selectedZone, selectedUserType])
+  }, [monthlyReservationData, searchTerm, selectedStatus, selectedZone, selectedUserType])
 
-  // =====================================================
-  // SUMMARY COUNTS
-  // =====================================================
+// =====================================================
+// SUMMARY COUNTS
+// =====================================================
 
-  const summary = useMemo(() => {
-    const reservationRevenue = reservationData.reduce(
-      (total, item) => total + item.reservationFee,
-      0
-    )
+const summary = useMemo(() => {
+  const reservationRevenue = monthlyReservationData.reduce(
+    (total, item) => total + Number(item.reservationFee || 0),
+    0
+  )
 
-    const after7Revenue = reservationData.reduce(
-      (total, item) => total + item.after7ParkingFee,
-      0
-    )
+  const after7Revenue = monthlyReservationData.reduce(
+    (total, item) => total + Number(item.after7ParkingFee || 0),
+    0
+  )
 
-    return {
-      total: reservationData.length,
-      upcoming: reservationData.filter((item) => item.status === "Upcoming")
-        .length,
-      active: reservationData.filter((item) => item.status === "Active").length,
-      completed: reservationData.filter((item) => item.status === "Completed")
-        .length,
-      cancelled: reservationData.filter((item) => item.status === "Cancelled")
-        .length,
-      after7: reservationData.filter((item) => item.after7ParkingFee > 0).length,
-      reservationRevenue,
-      after7Revenue,
-    }
-  }, [reservationData])
+  return {
+    total: monthlyReservationData.length,
+
+    upcoming: monthlyReservationData.filter(
+      (item) => item.status === "Upcoming"
+    ).length,
+
+    active: monthlyReservationData.filter(
+      (item) => item.status === "Active"
+    ).length,
+
+    completed: monthlyReservationData.filter(
+      (item) => item.status === "Completed"
+    ).length,
+
+    cancelled: monthlyReservationData.filter(
+      (item) => item.status === "Cancelled"
+    ).length,
+
+    after7: monthlyReservationData.filter(
+      (item) => Number(item.after7ParkingFee || 0) > 0
+    ).length,
+
+    reservationRevenue,
+    after7Revenue,
+  }
+}, [monthlyReservationData])
 
   // =====================================================
   // UPDATE RESERVATION STATUS
@@ -210,11 +294,12 @@ useAdminRealtimeRefresh({
   // RESET FILTERS
   // =====================================================
 
-  function handleResetFilters() {
+function handleResetFilters() {
     setSearchTerm("")
     setSelectedStatus("All Status")
     setSelectedZone("All Zones")
     setSelectedUserType("All Types")
+    setSelectedMonth(getCurrentMonthValue())
   }
 
   return (
@@ -307,6 +392,54 @@ useAdminRealtimeRefresh({
           </div>
         </div>
       </section>
+
+      {/* =====================================================
+            MONTH FILTER PANEL
+          ===================================================== */}
+
+        <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                Reservation Month
+              </p>
+
+              <h3 className="mt-2 text-xl font-black text-slate-950">
+                {formatSelectedMonthLabel(selectedMonth)}
+              </h3>
+
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                Reservation counts, fixed fees, and after-7PM charges are filtered by
+                selected reservation month.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              />
+
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(getCurrentMonthValue())}
+                className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+              >
+                This Month
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedMonth("")}
+                className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+              >
+                All Months
+              </button>
+            </div>
+          </div>
+        </section>
 
       {/* =====================================================
           FEE RULE PANEL
@@ -421,7 +554,7 @@ useAdminRealtimeRefresh({
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Showing {filteredReservations.length} of {reservationData.length} reservations.
+              Showing {filteredReservations.length} of {monthlyReservationData.length} reservations.
             </p>
           </div>
 
@@ -541,7 +674,7 @@ useAdminRealtimeRefresh({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Showing {filteredReservations.length} of {reservationData.length} reservations.
+            Showing {filteredReservations.length} of {monthlyReservationData.length} reservations.
           </p>
         </div>
 
