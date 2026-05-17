@@ -3,39 +3,83 @@
 // =====================================================
 
 import { useEffect, useMemo, useState } from "react"
+
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts"
 
-import { occupancyByZoneData } from "../../data/dashboardData"
 import { loadBayAvailabilityByZoneData } from "../../services/adminDashboardService"
+import ChartFrame from "./ChartFrame"
 
 // =====================================================
-// TOOLTIP FORMATTER
+// EMPTY OCCUPANCY DATA
+// No fake data. Used while loading/fallback.
 // =====================================================
 
-function formatTooltip(value, name) {
-  const labelMap = {
-    available: "Available Bays",
-    unavailable: "Unavailable Bays",
+const emptyOccupancyByZoneData = [
+  {
+    zone: "Zone A",
+    available: 0,
+    unavailable: 0,
+    total: 0,
+  },
+  {
+    zone: "Zone B",
+    available: 0,
+    unavailable: 0,
+    total: 0,
+  },
+  {
+    zone: "Zone C",
+    available: 0,
+    unavailable: 0,
+    total: 0,
+  },
+  {
+    zone: "Zone D",
+    available: 0,
+    unavailable: 0,
+    total: 0,
+  },
+]
+
+// =====================================================
+// CUSTOM TOOLTIP
+// =====================================================
+
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload || payload.length === 0) {
+    return null
   }
 
-  return [value, labelMap[name] || name]
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
+      <p className="mb-2 text-sm font-black text-slate-900">{label}</p>
+
+      {payload.map((item) => (
+        <p key={item.dataKey} className="text-sm font-semibold text-slate-600">
+          {item.name}:{" "}
+          <span className="font-black text-slate-950">
+            {Number(item.value || 0)}
+          </span>
+        </p>
+      ))}
+    </div>
+  )
 }
 
 // =====================================================
 // OCCUPANCY / BAY AVAILABILITY BY ZONE CHART
 // =====================================================
 
-function OccupancyByZoneChart() {
-  const [chartData, setChartData] = useState(occupancyByZoneData)
+function OccupancyByZoneChart({ refreshKey = 0 }) {
+  const [chartData, setChartData] = useState(emptyOccupancyByZoneData)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -50,28 +94,31 @@ function OccupancyByZoneChart() {
     try {
       const realData = await loadBayAvailabilityByZoneData()
 
-      setChartData(realData)
+      setChartData(
+        Array.isArray(realData) && realData.length > 0
+          ? realData
+          : emptyOccupancyByZoneData
+      )
     } catch (error) {
       console.error("Failed to load bay availability by zone:", error)
 
       setLoadError(
-        error.message ||
-          "Unable to load bay availability from Supabase."
+        error.message || "Unable to load bay availability from Supabase."
       )
 
-      setChartData(occupancyByZoneData)
+      setChartData(emptyOccupancyByZoneData)
     } finally {
       setIsLoading(false)
     }
   }
 
   // =====================================================
-  // INITIAL LOAD
+  // INITIAL LOAD + REALTIME REFRESH
   // =====================================================
 
   useEffect(() => {
     loadChartData()
-  }, [])
+  }, [refreshKey])
 
   // =====================================================
   // DERIVED VALUES
@@ -88,12 +135,25 @@ function OccupancyByZoneChart() {
     )
   }, [chartData])
 
+  const maxValue = useMemo(() => {
+    const highest = chartData.reduce((max, zone) => {
+      return Math.max(
+        max,
+        Number(zone.available || 0),
+        Number(zone.unavailable || 0),
+        Number(zone.total || 0)
+      )
+    }, 0)
+
+    return Math.max(5, highest + 2)
+  }, [chartData])
+
   // =====================================================
   // RENDER
   // =====================================================
 
   return (
-    <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div>
           <h3 className="text-lg font-black text-slate-950">
@@ -129,9 +189,19 @@ function OccupancyByZoneChart() {
         </div>
       )}
 
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData}>
+      <ChartFrame className="h-[288px] min-h-[288px] w-full">
+        {({ width, height }) => (
+          <BarChart
+            width={width}
+            height={height}
+            data={chartData}
+            margin={{
+              top: 16,
+              right: 20,
+              left: 0,
+              bottom: 8,
+            }}
+          >
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
 
             <XAxis
@@ -145,11 +215,14 @@ function OccupancyByZoneChart() {
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 12 }}
+              domain={[0, maxValue]}
               allowDecimals={false}
+              width={36}
             />
 
-            <Tooltip formatter={formatTooltip} />
-            <Legend />
+            <Tooltip content={<CustomTooltip />} />
+
+            <Legend verticalAlign="bottom" height={36} iconType="circle" />
 
             <Bar
               dataKey="available"
@@ -165,8 +238,8 @@ function OccupancyByZoneChart() {
               fill="#f97316"
             />
           </BarChart>
-        </ResponsiveContainer>
-      </div>
+        )}
+      </ChartFrame>
     </div>
   )
 }

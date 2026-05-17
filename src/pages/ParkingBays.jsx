@@ -17,18 +17,16 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import BayManageModal from "../components/modals/BayManageModal"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   bayStatusOptions,
-  parkingBays,
   parkingZoneOptions,
   sensorStatusOptions,
 } from "../data/parkingBays"
 
 import {
   loadAdminParkingBays,
-  subscribeToParkingBays,
-  unsubscribeFromParkingBays,
   updateParkingBayStatus,
 } from "../services/adminParkingBayService"
 
@@ -37,7 +35,7 @@ import {
 // =====================================================
 
 function ParkingBays() {
-  const [bayData, setBayData] = useState(parkingBays)
+  const [bayData, setBayData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -47,48 +45,66 @@ function ParkingBays() {
   const [selectedSensor, setSelectedSensor] = useState("All Sensors")
   const [selectedBay, setSelectedBay] = useState(null)
 
-    // =====================================================
-  // LOAD PARKING BAYS FROM SUPABASE
-  // =====================================================
+// =====================================================
+// LOAD PARKING BAYS FROM SUPABASE
+// =====================================================
 
-  async function loadBays() {
-    setIsLoading(true)
-    setLoadError("")
+    async function loadBays({ silent = false } = {}) {
+      if (!silent) {
+        setIsLoading(true)
+      }
 
-    try {
-      const realBays = await loadAdminParkingBays()
+      setLoadError("")
 
-      setBayData(realBays)
-    } catch (error) {
-      console.error("Failed to load parking bays:", error)
+      try {
+        const realBays = await loadAdminParkingBays()
 
-      setLoadError(
-        error.message ||
-          "Unable to load parking bays from Supabase. Please check table access or schema."
-      )
+        setBayData(realBays)
+      } catch (error) {
+        console.error("Failed to load parking bays:", error)
 
-      setBayData(parkingBays)
-    } finally {
-      setIsLoading(false)
+        setLoadError(
+          error.message ||
+            "Unable to load parking bays from Supabase. Please check table access or schema."
+        )
+
+        setBayData([])
+      } finally {
+        if (!silent) {
+          setIsLoading(false)
+        }
+      }
     }
-  }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
     loadBays()
-
-    const channel = subscribeToParkingBays(() => {
-      loadBays()
-    })
-
-    return () => {
-      unsubscribeFromParkingBays(channel)
-    }
   }, [])
 
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-parking-bays-realtime",
+    tables: [
+      "parking_bays",
+      "parking_zones",
+      "reservations",
+      "anpr_logs",
+      "guest_bookings",
+    ],
+    onRefresh: () => {
+      loadBays({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Parking bays realtime:", statusInfo.label)
+    },
+  })
+  
   // =====================================================
   // FILTERED PARKING BAYS
   // =====================================================

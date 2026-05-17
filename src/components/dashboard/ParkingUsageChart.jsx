@@ -9,17 +9,16 @@ import {
   Legend,
   Line,
   LineChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts"
 
 import { loadParkingUsageByHourData } from "../../services/adminDashboardService"
+import ChartFrame from "./ChartFrame"
 
 // =====================================================
 // EMPTY PARKING USAGE DATA
-// No fake data. Used while loading/fallback.
 // =====================================================
 
 const emptyParkingUsageData = [
@@ -69,7 +68,7 @@ function CustomTooltip({ active, payload, label }) {
 // PARKING USAGE CHART
 // =====================================================
 
-function ParkingUsageChart() {
+function ParkingUsageChart({ refreshKey = 0 }) {
   const [chartData, setChartData] = useState(emptyParkingUsageData)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -85,7 +84,11 @@ function ParkingUsageChart() {
     try {
       const realData = await loadParkingUsageByHourData()
 
-      setChartData(realData)
+      setChartData(
+        Array.isArray(realData) && realData.length > 0
+          ? realData
+          : emptyParkingUsageData
+      )
     } catch (error) {
       console.error("Failed to load parking usage by hour:", error)
 
@@ -100,23 +103,29 @@ function ParkingUsageChart() {
   }
 
   // =====================================================
-  // INITIAL LOAD
+  // INITIAL LOAD + REALTIME REFRESH
   // =====================================================
 
   useEffect(() => {
     loadChartData()
-  }, [])
+  }, [refreshKey])
 
   // =====================================================
   // DERIVED VALUES
   // =====================================================
 
   const totalEntries = useMemo(() => {
-    return chartData.reduce((total, item) => total + Number(item.entries || 0), 0)
+    return chartData.reduce(
+      (total, item) => total + Number(item.entries || 0),
+      0
+    )
   }, [chartData])
 
   const totalExits = useMemo(() => {
-    return chartData.reduce((total, item) => total + Number(item.exits || 0), 0)
+    return chartData.reduce(
+      (total, item) => total + Number(item.exits || 0),
+      0
+    )
   }, [chartData])
 
   const maxValue = useMemo(() => {
@@ -132,7 +141,7 @@ function ParkingUsageChart() {
   // =====================================================
 
   return (
-    <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div>
           <h3 className="text-lg font-black text-slate-950">
@@ -184,12 +193,14 @@ function ParkingUsageChart() {
           ===================================================== */}
 
       <div
-        className="max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-3"
+        className="max-w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-3"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        <div className="h-80 w-[760px] lg:w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame className="h-[320px] min-h-[320px] w-[760px] min-w-[760px] lg:w-full lg:min-w-0">
+          {({ width, height }) => (
             <LineChart
+              width={width}
+              height={height}
               data={chartData}
               margin={{
                 top: 16,
@@ -256,8 +267,8 @@ function ParkingUsageChart() {
                 }}
               />
             </LineChart>
-          </ResponsiveContainer>
-        </div>
+          )}
+        </ChartFrame>
       </div>
 
       <p className="mt-1 text-center text-xs font-semibold text-slate-400 lg:hidden">

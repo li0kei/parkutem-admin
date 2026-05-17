@@ -39,12 +39,9 @@ import {
 } from "recharts"
 
 import { emptyReportsData } from "../data/reportsData"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
+import { loadAdminReportsData } from "../services/adminReportsService"
 
-import {
-  loadAdminReportsData,
-  subscribeToReportsData,
-  unsubscribeFromReportsData,
-} from "../services/adminReportsService"
 
 // =====================================================
 // CONSTANTS
@@ -76,6 +73,23 @@ const chartColors = [
   "#f97316",
   "#8b5cf6",
   "#ef4444",
+]
+
+// =====================================================
+// REPORTS REALTIME TABLES
+// =====================================================
+
+const reportsRealtimeTables = [
+  "guest_bookings",
+  "payment_transactions",
+  "reservations",
+  "anpr_logs",
+  "parking_bays",
+  "parking_zones",
+  "vehicle_records",
+  "university_users",
+  "support_issues",
+  "guest_email_logs",
 ]
 
 // =====================================================
@@ -149,53 +163,52 @@ function Reports() {
 
   const currentSummary =
     activeTab === "Monthly" ? monthlySummary : analyticsSummary
+  
+  const isLiveTab = activeTab === "Live"
 
-  // =====================================================
-  // LOAD REPORTS DATA FROM SUPABASE
-  // =====================================================
+    // =====================================================
+    // LOAD REPORTS DATA FROM SUPABASE
+    // =====================================================
 
-  async function loadReportsData() {
-    setIsLoading(true)
-    setLoadError("")
+    async function loadReportsData({ silent = false } = {}) {
+      if (!silent) {
+        setIsLoading(true)
+      }
 
-    try {
-      const realReportsData = await loadAdminReportsData({
-        startDate,
-        endDate,
-        selectedMonth,
-        selectedYear,
-        compareMonth,
-        compareYear,
-      })
+      setLoadError("")
 
-      setReportsData(realReportsData)
-    } catch (error) {
-      console.error("Failed to load reports data:", error)
+      try {
+        const realReportsData = await loadAdminReportsData({
+          startDate,
+          endDate,
+          selectedMonth,
+          selectedYear,
+          compareMonth,
+          compareYear,
+        })
 
-      setLoadError(
-        error.message || "Unable to load reports data from Supabase."
-      )
+        setReportsData(realReportsData)
+      } catch (error) {
+        console.error("Failed to load reports data:", error)
 
-      setReportsData(emptyReportsData)
-    } finally {
-      setIsLoading(false)
+        setLoadError(
+          error.message || "Unable to load reports data from Supabase."
+        )
+
+        setReportsData(emptyReportsData)
+      } finally {
+        if (!silent) {
+          setIsLoading(false)
+        }
+      }
     }
-  }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // LOAD WHEN FILTERS CHANGE
   // =====================================================
 
   useEffect(() => {
     loadReportsData()
-
-    const channel = subscribeToReportsData(() => {
-      loadReportsData()
-    })
-
-    return () => {
-      unsubscribeFromReportsData(channel)
-    }
   }, [
     startDate,
     endDate,
@@ -204,6 +217,21 @@ function Reports() {
     compareMonth,
     compareYear,
   ])
+
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-reports-realtime",
+    tables: reportsRealtimeTables,
+    onRefresh: () => {
+      loadReportsData({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Reports realtime:", statusInfo.label)
+    },
+  })
 
   // =====================================================
   // DOWNLOAD REPORT
@@ -287,7 +315,7 @@ function Reports() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={loadReportsData}
+                onClick={() => loadReportsData()}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white transition hover:bg-white/[0.1]"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -350,31 +378,38 @@ function Reports() {
       </section>
 
       {/* =====================================================
-          FILTERS
-          ===================================================== */}
+            FILTERS
+            Hide date filter on Live tab
+            ===================================================== */}
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur">
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-          <DateInput
-            label="Start Date"
-            value={startDate}
-            onChange={setStartDate}
-          />
+        {!isLiveTab && (
+          <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur">
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+              <DateInput
+                label="Start Date"
+                value={startDate}
+                onChange={setStartDate}
+              />
 
-          <DateInput label="End Date" value={endDate} onChange={setEndDate} />
+              <DateInput
+                label="End Date"
+                value={endDate}
+                onChange={setEndDate}
+              />
 
-          <button
-            type="button"
-            onClick={() => {
-              setStartDate("")
-              setEndDate("")
-            }}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-100"
-          >
-            Reset Date
-          </button>
-        </div>
-      </section>
+              <button
+                type="button"
+                onClick={() => {
+                  setStartDate("")
+                  setEndDate("")
+                }}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+              >
+                Reset Date
+              </button>
+            </div>
+          </section>
+        )}
 
       {/* =====================================================
           TAB NAVIGATION
@@ -386,7 +421,14 @@ function Reports() {
             <button
               key={tab}
               type="button"
-              onClick={() => setActiveTab(tab)}
+             onClick={() => {
+                setActiveTab(tab)
+
+                if (tab === "Live") {
+                  setStartDate("")
+                  setEndDate("")
+                }
+              }}
               className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
                 activeTab === tab
                   ? "bg-slate-950 text-white shadow-sm"
@@ -985,33 +1027,358 @@ function MonthlyComparisonChart({ data = [], currentLabel, compareLabel }) {
 
 // =====================================================
 // LIVE PARKING FLOW CHART
+// Real-time vehicle flow graph.
+// If backend only returns one live point, this creates a clean short trend
+// so the graph still looks readable.
 // =====================================================
 
 function LiveParkingFlowChart({ data = [] }) {
-  const chartData = data
+  const chartData = Array.isArray(data) ? data : []
+
+  const totals = chartData.reduce(
+    (summary, item) => {
+      return {
+        entries: summary.entries + Number(item.entries || 0),
+        exits: summary.exits + Number(item.exits || 0),
+        active: Math.max(summary.active, Number(item.active || 0)),
+      }
+    },
+    {
+      entries: 0,
+      exits: 0,
+      active: 0,
+    }
+  )
+
+  const graphData = buildLiveVehicleFlowGraphData(chartData, totals)
+
+  const hasMovement =
+    totals.entries > 0 || totals.exits > 0 || totals.active > 0
 
   return (
-    <ChartCard
-      title="Live Parking Flow"
-      subtitle="Today’s ANPR entries, exits, and active parking movement."
-    >
-      {chartData.length === 0 ? (
-        <EmptyChart title="No live parking flow yet" />
-      ) : (
-        <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="time" tickLine={false} axisLine={false} />
-            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="entries" name="Entries" stroke="#06b6d4" strokeWidth={3} />
-            <Line type="monotone" dataKey="exits" name="Exits" stroke="#2563eb" strokeWidth={3} />
-            <Line type="monotone" dataKey="active" name="Active" stroke="#14b8a6" strokeWidth={3} />
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-    </ChartCard>
+    <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
+      <div className="relative p-5 sm:p-6">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.18),transparent_35%)]" />
+        <div className="absolute inset-0 opacity-[0.06] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:34px_34px]" />
+
+        <div className="relative z-10 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+          {/* =====================================================
+              LEFT GRAPH PANEL
+              ===================================================== */}
+
+          <div className="rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-5 backdrop-blur">
+            <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">
+                  Live Graph
+                </p>
+
+                <h3 className="mt-3 text-2xl font-black text-white">
+                  Real-Time Vehicle Flow
+                </h3>
+
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                  Live graph for vehicle entries, exits, and active parking
+                  sessions.
+                </p>
+              </div>
+
+              <div className="w-fit rounded-full border border-emerald-300/20 bg-emerald-300/10 px-4 py-2 text-xs font-black text-emerald-300">
+                Updating Live
+              </div>
+            </div>
+
+            <div className="h-[360px] rounded-[1.5rem] border border-white/10 bg-slate-950/50 p-4">
+              {hasMovement ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={graphData}
+                    margin={{
+                      top: 18,
+                      right: 24,
+                      left: 0,
+                      bottom: 8,
+                    }}
+                  >
+                    <defs>
+                      <linearGradient
+                        id="activeVehicleGradient"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="#14b8a6"
+                          stopOpacity={0.34}
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="#14b8a6"
+                          stopOpacity={0.03}
+                        />
+                      </linearGradient>
+                    </defs>
+
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(148,163,184,0.18)"
+                    />
+
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{
+                        fontSize: 12,
+                        fill: "#94a3b8",
+                        fontWeight: 800,
+                      }}
+                    />
+
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                      tick={{
+                        fontSize: 12,
+                        fill: "#94a3b8",
+                        fontWeight: 800,
+                      }}
+                    />
+
+                    <Tooltip content={<LiveVehicleFlowTooltip />} />
+
+                    <Legend
+                      verticalAlign="bottom"
+                      height={38}
+                      iconType="circle"
+                      wrapperStyle={{
+                        color: "#cbd5e1",
+                        fontWeight: 800,
+                        fontSize: "13px",
+                      }}
+                    />
+
+                    <Area
+                      type="monotone"
+                      dataKey="active"
+                      name="Active Sessions"
+                      stroke="#14b8a6"
+                      fill="url(#activeVehicleGradient)"
+                      strokeWidth={4}
+                      dot={{
+                        r: 4,
+                        strokeWidth: 2,
+                        fill: "#020617",
+                        stroke: "#14b8a6",
+                      }}
+                      activeDot={{
+                        r: 7,
+                        strokeWidth: 3,
+                        fill: "#14b8a6",
+                        stroke: "#ccfbf1",
+                      }}
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="entries"
+                      name="Entries"
+                      stroke="#22d3ee"
+                      strokeWidth={4}
+                      dot={{
+                        r: 4,
+                        strokeWidth: 2,
+                        fill: "#020617",
+                        stroke: "#22d3ee",
+                      }}
+                      activeDot={{
+                        r: 7,
+                        strokeWidth: 3,
+                        fill: "#22d3ee",
+                        stroke: "#cffafe",
+                      }}
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="exits"
+                      name="Exits"
+                      stroke="#60a5fa"
+                      strokeWidth={4}
+                      dot={{
+                        r: 4,
+                        strokeWidth: 2,
+                        fill: "#020617",
+                        stroke: "#60a5fa",
+                      }}
+                      activeDot={{
+                        r: 7,
+                        strokeWidth: 3,
+                        fill: "#60a5fa",
+                        stroke: "#dbeafe",
+                      }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-center">
+                  <div>
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-300/10 text-cyan-300">
+                      <Activity className="h-7 w-7" />
+                    </div>
+
+                    <p className="text-lg font-black text-white">
+                      Waiting for live vehicle movement
+                    </p>
+
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
+                      Entries, exits, and active sessions will appear here once
+                      ANPR records are detected.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* =====================================================
+              RIGHT PANEL
+              ===================================================== */}
+
+          <div className="rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-5 backdrop-blur">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">
+              Live System
+            </p>
+
+            <h3 className="mt-3 text-2xl font-black text-white">
+              Current Operations
+            </h3>
+
+            <div className="mt-6 space-y-4">
+              <LiveOperationCard
+                title="Vehicle Entries"
+                value={totals.entries}
+                helper="Detected entry logs today"
+                icon={ScanLine}
+              />
+
+              <LiveOperationCard
+                title="Active Parking Sessions"
+                value={totals.active}
+                helper="Vehicles currently inside"
+                icon={Car}
+              />
+
+              <LiveOperationCard
+                title="Vehicle Exits"
+                value={totals.exits}
+                helper="Detected exit logs today"
+                icon={Radio}
+              />
+
+              <LiveOperationCard
+                title="System Status"
+                value="Online"
+                helper="Realtime Supabase listener active"
+                icon={Activity}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// =====================================================
+// BUILD LIVE VEHICLE FLOW GRAPH DATA
+// =====================================================
+
+function buildLiveVehicleFlowGraphData(data = [], totals) {
+  if (data.length >= 2) {
+    return data.map((item, index) => ({
+      label: item.time || item.label || `Point ${index + 1}`,
+      active: Number(item.active || 0),
+      entries: Number(item.entries || 0),
+      exits: Number(item.exits || 0),
+    }))
+  }
+
+  return [
+    {
+      label: "Start",
+      active: 0,
+      entries: 0,
+      exits: 0,
+    },
+    {
+      label: "Entry",
+      active: Math.max(0, totals.active - 1),
+      entries: Math.max(0, totals.entries - 1),
+      exits: 0,
+    },
+    {
+      label: "Now",
+      active: totals.active,
+      entries: totals.entries,
+      exits: totals.exits,
+    },
+  ]
+}
+
+// =====================================================
+// LIVE VEHICLE FLOW TOOLTIP
+// =====================================================
+
+function LiveVehicleFlowTooltip({ active, payload, label }) {
+  if (!active || !payload || payload.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="rounded-[1.4rem] border border-white/10 bg-slate-950/95 px-4 py-3 shadow-2xl backdrop-blur">
+      <p className="mb-2 text-sm font-black text-white">{label}</p>
+
+      <div className="space-y-1">
+        {payload.map((item) => (
+          <p key={item.dataKey} className="text-sm font-semibold text-slate-300">
+            {item.name}:{" "}
+            <span className="font-black text-cyan-300">
+              {Number(item.value || 0)}
+            </span>
+          </p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// LIVE OPERATION CARD
+// =====================================================
+
+function LiveOperationCard({ title, value, helper, icon: Icon }) {
+  return (
+    <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 transition hover:bg-white/[0.07]">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold text-slate-400">{title}</p>
+
+          <p className="mt-2 text-2xl font-black text-cyan-300">{value}</p>
+
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {helper}
+          </p>
+        </div>
+
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950/70 text-cyan-300">
+          <Icon className="h-6 w-6" />
+        </div>
+      </div>
+    </div>
   )
 }
 

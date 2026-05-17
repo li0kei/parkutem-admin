@@ -18,18 +18,16 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import StickerReviewModal from "../components/modals/StickerReviewModal"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   vehicleAnprStatusOptions,
-  vehicles,
   vehicleStickerStatusOptions,
   vehicleUserTypeOptions,
 } from "../data/vehicles"
 
 import {
   loadAdminVehicleRecords,
-  subscribeToVehicleRecords,
-  unsubscribeFromVehicleRecords,
   updateVehicleAnprStatus,
   updateVehicleStickerStatus,
 } from "../services/adminVehicleService"
@@ -39,7 +37,7 @@ import {
 // =====================================================
 
 function Vehicles() {
-  const [vehicleData, setVehicleData] = useState(vehicles)
+  const [vehicleData, setVehicleData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -49,12 +47,15 @@ function Vehicles() {
   const [selectedAnpr, setSelectedAnpr] = useState("All ANPR")
   const [selectedVehicle, setSelectedVehicle] = useState(null)
 
-    // =====================================================
+   // =====================================================
   // LOAD VEHICLE RECORDS FROM SUPABASE
   // =====================================================
 
-  async function loadVehicles() {
-    setIsLoading(true)
+  async function loadVehicles({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
     setLoadError("")
 
     try {
@@ -69,27 +70,40 @@ function Vehicles() {
           "Unable to load vehicle records from Supabase. Please check table access or schema."
       )
 
-      setVehicleData(vehicles)
+      setVehicleData([])
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
     loadVehicles()
-
-    const channel = subscribeToVehicleRecords(() => {
-      loadVehicles()
-    })
-
-    return () => {
-      unsubscribeFromVehicleRecords(channel)
-    }
   }, [])
+
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-vehicles-realtime",
+    tables: [
+      "vehicle_records",
+      "university_users",
+      "anpr_logs",
+    ],
+    onRefresh: () => {
+      loadVehicles({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Vehicles realtime:", statusInfo.label)
+    },
+  })
 
   // =====================================================
   // FILTERED VEHICLES

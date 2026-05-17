@@ -12,7 +12,7 @@ import StatusBadge from "../common/StatusBadge"
 // RECENT ACTIVITY COMPONENT
 // =====================================================
 
-function RecentActivity() {
+function RecentActivity({ refreshKey = 0 }) {
   const [activities, setActivities] = useState(recentActivities)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -48,7 +48,7 @@ function RecentActivity() {
 
   useEffect(() => {
     loadActivities()
-  }, [])
+  }, [refreshKey])
 
   // =====================================================
   // RENDER

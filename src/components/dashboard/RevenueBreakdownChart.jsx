@@ -9,12 +9,12 @@ import {
   Legend,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
 } from "recharts"
 
 import { revenueBreakdownData } from "../../data/dashboardData"
 import { loadRevenueBreakdownData } from "../../services/adminDashboardService"
+import ChartFrame from "./ChartFrame"
 
 // =====================================================
 // CHART COLORS
@@ -34,7 +34,7 @@ function formatRM(value) {
 // REVENUE BREAKDOWN CHART
 // =====================================================
 
-function RevenueBreakdownChart() {
+function RevenueBreakdownChart({ refreshKey = 0 }) {
   const [chartData, setChartData] = useState(revenueBreakdownData)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -49,14 +49,12 @@ function RevenueBreakdownChart() {
 
     try {
       const realData = await loadRevenueBreakdownData()
-
       setChartData(realData)
     } catch (error) {
       console.error("Failed to load revenue breakdown:", error)
 
       setLoadError(
-        error.message ||
-          "Unable to load revenue breakdown from Supabase."
+        error.message || "Unable to load revenue breakdown from Supabase."
       )
 
       setChartData(revenueBreakdownData)
@@ -66,12 +64,12 @@ function RevenueBreakdownChart() {
   }
 
   // =====================================================
-  // INITIAL LOAD
+  // INITIAL LOAD + REALTIME REFRESH
   // =====================================================
 
   useEffect(() => {
     loadChartData()
-  }, [])
+  }, [refreshKey])
 
   // =====================================================
   // DERIVED VALUES
@@ -90,7 +88,7 @@ function RevenueBreakdownChart() {
   // =====================================================
 
   return (
-    <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div>
           <h3 className="text-lg font-black text-slate-950">
@@ -138,9 +136,9 @@ function RevenueBreakdownChart() {
           </div>
         </div>
       ) : (
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+        <ChartFrame className="h-[288px] min-h-[288px] w-full">
+          {({ width, height }) => (
+            <PieChart width={width} height={height}>
               <Tooltip formatter={(value) => formatRM(value)} />
               <Legend />
 
@@ -160,8 +158,8 @@ function RevenueBreakdownChart() {
                 ))}
               </Pie>
             </PieChart>
-          </ResponsiveContainer>
-        </div>
+          )}
+        </ChartFrame>
       )}
     </div>
   )

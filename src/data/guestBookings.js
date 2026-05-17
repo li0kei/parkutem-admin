@@ -44,8 +44,9 @@ export const guestEntryStatusOptions = [
   "All Entry",
   "Not Entered",
   "Entered",
-  "Exited",
   "Overstay",
+  "Exited",
+  "No Show",
 ]
 
 // =====================================================

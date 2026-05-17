@@ -22,18 +22,16 @@ import {
 } from "lucide-react"
 
 import StatusBadge from "../components/common/StatusBadge"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   issuePriorities,
   issueStatuses,
-  issueTickets,
   issueTypes,
 } from "../data/issues"
 
 import {
   loadAdminSupportIssues,
-  subscribeToSupportIssues,
-  unsubscribeFromSupportIssues,
   updateSupportIssueStatus,
 } from "../services/adminIssueService"
 
@@ -42,7 +40,7 @@ import {
 // =====================================================
 
 function Issues() {
-  const [tickets, setTickets] = useState(issueTickets)
+  const [tickets, setTickets] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -52,12 +50,15 @@ function Issues() {
   const [selectedPriority, setSelectedPriority] = useState("All Priority")
   const [selectedTicket, setSelectedTicket] = useState(null)
 
-    // =====================================================
+  // =====================================================
   // LOAD SUPPORT ISSUES FROM SUPABASE
   // =====================================================
 
-  async function loadIssues() {
-    setIsLoading(true)
+  async function loadIssues({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
     setLoadError("")
 
     try {
@@ -71,27 +72,44 @@ function Issues() {
         error.message || "Unable to load support issues from Supabase."
       )
 
-      setTickets(issueTickets)
+      setTickets([])
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
     loadIssues()
-
-    const channel = subscribeToSupportIssues(() => {
-      loadIssues()
-    })
-
-    return () => {
-      unsubscribeFromSupportIssues(channel)
-    }
   }, [])
+
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-issues-realtime",
+    tables: [
+      "support_issues",
+      "guest_bookings",
+      "reservations",
+      "anpr_logs",
+      "vehicle_records",
+      "parking_bays",
+      "payment_transactions",
+    ],
+    onRefresh: () => {
+      loadIssues({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Issues realtime:", statusInfo.label)
+    },
+  })
 
   // =====================================================
   // FILTERED TICKETS

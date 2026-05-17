@@ -14,11 +14,26 @@ import RevenueBreakdownChart from "../components/dashboard/RevenueBreakdownChart
 
 import { dashboardStats } from "../data/dashboardData"
 
-import {
-  loadAdminDashboardStats,
-  subscribeToDashboardChanges,
-  unsubscribeFromDashboardChanges,
-} from "../services/adminDashboardService"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
+
+import { loadAdminDashboardStats } from "../services/adminDashboardService"
+
+// =====================================================
+// DASHBOARD REALTIME TABLES
+// =====================================================
+
+const dashboardRealtimeTables = [
+  "guest_bookings",
+  "payment_transactions",
+  "parking_zones",
+  "parking_bays",
+  "anpr_logs",
+  "reservations",
+  "support_issues",
+  "vehicle_records",
+  "university_users",
+  "guest_email_logs",
+]
 
 // =====================================================
 // DASHBOARD PAGE
@@ -26,6 +41,7 @@ import {
 
 function Dashboard() {
   const [stats, setStats] = useState(dashboardStats)
+  const [refreshKey, setRefreshKey] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -33,43 +49,52 @@ function Dashboard() {
   // LOAD DASHBOARD STATS
   // =====================================================
 
-  async function loadDashboardStats() {
-    setIsLoading(true)
+  async function loadDashboardStats({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
     setLoadError("")
 
     try {
       const realStats = await loadAdminDashboardStats()
-
       setStats(realStats)
     } catch (error) {
       console.error("Failed to load dashboard stats:", error)
 
       setLoadError(
-        error.message ||
-          "Unable to load dashboard data from Supabase. Showing fallback data."
+        error.message || "Unable to load dashboard data from Supabase."
       )
-
-      setStats(dashboardStats)
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME
+  // INITIAL LOAD
   // =====================================================
 
-  useEffect(() => {
-    loadDashboardStats()
-
-    const channel = subscribeToDashboardChanges(() => {
+    useEffect(() => {
       loadDashboardStats()
-    })
+    }, [])
 
-    return () => {
-      unsubscribeFromDashboardChanges(channel)
-    }
-  }, [])
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-dashboard-realtime",
+    tables: dashboardRealtimeTables,
+      onRefresh: () => {
+      loadDashboardStats({ silent: true })
+      setRefreshKey((current) => current + 1)
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Dashboard realtime:", statusInfo.label)
+    },
+  })
 
   return (
     <div className="space-y-6">
@@ -154,19 +179,20 @@ function Dashboard() {
           MAIN CHARTS
           ===================================================== */}
 
-      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <ParkingUsageChart />
-        <RevenueBreakdownChart />
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+        <ParkingUsageChart refreshKey={refreshKey} />
+        <RevenueBreakdownChart refreshKey={refreshKey} />
       </section>
+
 
       {/* =====================================================
           SECONDARY CHARTS AND ACTIVITY
           ===================================================== */}
 
-      <section className="grid items-start gap-6 xl:grid-cols-[1fr_1fr_1.05fr]">
-        <ReservationTrendChart />
-        <OccupancyByZoneChart />
-        <RecentActivity />
+        <section className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.05fr)]">
+        <ReservationTrendChart refreshKey={refreshKey} />
+        <OccupancyByZoneChart refreshKey={refreshKey} />
+        <RecentActivity refreshKey={refreshKey} />
       </section>
     </div>
   )

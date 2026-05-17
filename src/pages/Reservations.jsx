@@ -18,18 +18,16 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import ReservationDetailModal from "../components/modals/ReservationDetailModal"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   reservationStatusOptions,
-  reservations,
   reservationUserTypeOptions,
   reservationZoneOptions,
 } from "../data/reservations"
 
 import {
   loadAdminReservations,
-  subscribeToReservations,
-  unsubscribeFromReservations,
   updateReservationStatus,
 } from "../services/adminReservationService"
 
@@ -38,7 +36,7 @@ import {
 // =====================================================
 
 function Reservations() {
-  const [reservationData, setReservationData] = useState(reservations)
+  const [reservationData, setReservationData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -48,17 +46,19 @@ function Reservations() {
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedReservation, setSelectedReservation] = useState(null)
 
-    // =====================================================
-  // LOAD RESERVATIONS FROM SUPABASE
-  // =====================================================
+// =====================================================
+// LOAD RESERVATIONS FROM SUPABASE
+// =====================================================
 
-  async function loadReservations() {
-    setIsLoading(true)
+  async function loadReservations({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
     setLoadError("")
 
     try {
       const realReservations = await loadAdminReservations()
-
       setReservationData(realReservations)
     } catch (error) {
       console.error("Failed to load reservations:", error)
@@ -67,27 +67,44 @@ function Reservations() {
         error.message || "Unable to load reservations from Supabase."
       )
 
-      setReservationData(reservations)
+      setReservationData([])
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
-  // =====================================================
+// INITIAL LOAD
+// =====================================================
 
-  useEffect(() => {
-    loadReservations()
+useEffect(() => {
+  loadReservations()
+}, [])
 
-    const channel = subscribeToReservations(() => {
-      loadReservations()
-    })
+// =====================================================
+// REALTIME REFRESH
+// =====================================================
 
-    return () => {
-      unsubscribeFromReservations(channel)
-    }
-  }, [])
+useAdminRealtimeRefresh({
+  channelName: "admin-reservations-realtime",
+  tables: [
+    "reservations",
+    "parking_bays",
+    "parking_zones",
+    "anpr_logs",
+    "payment_transactions",
+    "university_users",
+    "vehicle_records",
+  ],
+  onRefresh: () => {
+    loadReservations({ silent: true })
+  },
+  onStatusChange: (statusInfo) => {
+    console.log("Reservations realtime:", statusInfo.label)
+  },
+})
 
   // =====================================================
   // FILTERED RESERVATIONS

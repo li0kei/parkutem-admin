@@ -18,6 +18,7 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import GuestBookingModal from "../components/modals/GuestBookingModal"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   guestAnprAccessOptions,
@@ -26,11 +27,7 @@ import {
   guestPaymentStatusOptions,
 } from "../data/guestBookings"
 
-import {
-  loadAdminGuestBookings,
-  subscribeToGuestBookings,
-  unsubscribeFromGuestBookings,
-} from "../services/adminGuestBookingService"
+import { loadAdminGuestBookings } from "../services/adminGuestBookingService"
 
 // =====================================================
 // GUEST BOOKING MANAGEMENT PAGE
@@ -50,29 +47,32 @@ function GuestBookings() {
   const [selectedEntryStatus, setSelectedEntryStatus] = useState("All Entry")
   const [selectedBooking, setSelectedBooking] = useState(null)
 
-  // =====================================================
-  // LOAD GUEST BOOKINGS FROM SUPABASE
-  // =====================================================
+// =====================================================
+// LOAD GUEST BOOKINGS
+// =====================================================
 
-  async function loadGuestBookings() {
-    setIsLoading(true)
+  async function loadGuestBookings({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
     setLoadError("")
 
     try {
       const realBookings = await loadAdminGuestBookings()
-
       setBookingData(realBookings)
     } catch (error) {
       console.error("Failed to load guest bookings:", error)
 
       setLoadError(
-        error.message ||
-          "Unable to load guest bookings from Supabase. Showing fallback data."
+        error.message || "Unable to load guest bookings from Supabase."
       )
 
       setBookingData([])
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
@@ -80,17 +80,29 @@ function GuestBookings() {
   // INITIAL LOAD + REALTIME SUBSCRIPTION
   // =====================================================
 
-  useEffect(() => {
-    loadGuestBookings()
-
-    const channel = subscribeToGuestBookings(() => {
+    useEffect(() => {
       loadGuestBookings()
-    })
+    }, [])
 
-    return () => {
-      unsubscribeFromGuestBookings(channel)
-    }
-  }, [])
+// =====================================================
+// REALTIME REFRESH
+// =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-guest-bookings-realtime",
+    tables: [
+      "guest_bookings",
+      "payment_transactions",
+      "anpr_logs",
+      "guest_email_logs",
+    ],
+    onRefresh: () => {
+      loadGuestBookings({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Guest bookings realtime:", statusInfo.label)
+    },
+  })
 
   // =====================================================
   // FILTERED BOOKINGS
@@ -162,8 +174,9 @@ function GuestBookings() {
           (booking) => booking.anprAccess === "Enabled"
         ).length,
 
-        entered: bookingData.filter((booking) => booking.entryStatus === "Entered")
-          .length,
+        entered: bookingData.filter((booking) =>
+          ["Entered", "Overstay", "Exited"].includes(booking.entryStatus)
+        ).length,
 
         guestRevenue,
       }
@@ -615,7 +628,11 @@ function GuestBookings() {
               />
               <MobileInfo
                 label="Bay"
-                value={`${booking.bayNumber} • ${booking.zone}`}
+                value={
+                  booking.bayNumber
+                    ? `${booking.bayNumber} • ${booking.zone}`
+                    : booking.parkingAllocation
+                }
               />
               <MobileInfo
                 label="Parking Fee"

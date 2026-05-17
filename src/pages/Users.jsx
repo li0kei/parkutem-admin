@@ -17,18 +17,16 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import UserDetailModal from "../components/modals/UserDetailModal"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   accountStatusOptions,
   roleOptions,
   stickerStatusOptions,
-  users,
 } from "../data/users"
 
 import {
   loadAdminUsers,
-  subscribeToUniversityUsers,
-  unsubscribeFromUniversityUsers,
   updateUniversityUserAccountStatus,
 } from "../services/adminUserService"
 
@@ -37,7 +35,7 @@ import {
 // =====================================================
 
 function Users() {
-  const [userData, setUserData] = useState(users)
+  const [userData, setUserData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -47,12 +45,15 @@ function Users() {
   const [selectedAccount, setSelectedAccount] = useState("All Accounts")
   const [selectedUser, setSelectedUser] = useState(null)
 
-    // =====================================================
+  // =====================================================
   // LOAD USERS FROM SUPABASE
   // =====================================================
 
-  async function loadUsers() {
-    setIsLoading(true)
+  async function loadUsers({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
+    }
+
     setLoadError("")
 
     try {
@@ -67,27 +68,42 @@ function Users() {
           "Unable to load student/staff records from Supabase."
       )
 
-      setUserData(users)
+      setUserData([])
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
     loadUsers()
-
-    const channel = subscribeToUniversityUsers(() => {
-      loadUsers()
-    })
-
-    return () => {
-      unsubscribeFromUniversityUsers(channel)
-    }
   }, [])
+
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-users-realtime",
+    tables: [
+      "university_users",
+      "vehicle_records",
+      "anpr_logs",
+      "reservations",
+      "payment_transactions",
+    ],
+    onRefresh: () => {
+      loadUsers({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("Users realtime:", statusInfo.label)
+    },
+  })
 
   // =====================================================
   // FILTERED USERS
@@ -471,7 +487,10 @@ function Users() {
               <MobileInfo label="Email" value={user.email} />
               <MobileInfo label="Faculty" value={`${user.faculty} • ${user.department}`} />
               <MobileInfo label="Vehicle" value={`${user.vehiclePlate} • ${user.vehicleModel}`} />
-              <MobileInfo label="Wallet" value={`RM ${user.walletBalance.toFixed(2)}`} />
+              <MobileInfo
+                label="Wallet"
+                value={`RM ${Number(user.walletBalance || 0).toFixed(2)}`}
+              />
             </div>
 
             <button
@@ -562,7 +581,8 @@ function RolePill({ role }) {
 // =====================================================
 
 function WalletText({ amount }) {
-  const isLow = amount < 10
+  const safeAmount = Number(amount || 0)
+  const isLow = safeAmount < 10
 
   return (
     <div>
@@ -571,7 +591,7 @@ function WalletText({ amount }) {
           isLow ? "text-orange-600" : "text-slate-700"
         }`}
       >
-        RM {amount.toFixed(2)}
+        RM {safeAmount.toFixed(2)}
       </p>
 
       {isLow && (

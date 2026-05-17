@@ -290,36 +290,40 @@ async function refreshDashboardMaintenanceStatuses() {
   })
 }
 
-// =====================================================
-// GET PENDING ISSUES COUNT
-// Supports either issue_status or status column.
-// =====================================================
+  // =====================================================
+  // GET PENDING ISSUES COUNT
+  // Source: support_issues.status
+  // Counts Open / In Progress / Pending issues without probing missing columns.
+  // =====================================================
 
-async function getPendingIssuesCount() {
-  const activeIssueStatuses = ["open", "in_progress", "pending"]
+  async function getPendingIssuesCount() {
+    const activeIssueStatuses = [
+      "open",
+      "in_progress",
+      "in progress",
+      "pending",
+      "Open",
+      "In Progress",
+      "Pending",
+    ]
 
-  const possibleStatusColumns = ["issue_status", "status"]
+    const { data, error } = await supabase
+      .from("support_issues")
+      .select("id, status")
 
-  for (const column of possibleStatusColumns) {
-    try {
-      return await getCount("support_issues", [
-        {
-          column,
-          operator: "in",
-          value: activeIssueStatuses,
-        },
-      ])
-    } catch (error) {
-      const message = String(error.message || "")
-
-      if (!message.toLowerCase().includes("column")) {
-        console.warn("Pending issues count warning:", message)
-      }
+    if (error) {
+      console.warn("Pending issues count warning:", error.message)
+      return 0
     }
-  }
 
-  return 0
-}
+    return (data || []).filter((issue) => {
+      const cleanStatus = normalizeText(issue.status)
+
+      return activeIssueStatuses
+        .map((status) => normalizeText(status))
+        .includes(cleanStatus)
+    }).length
+  }
 
 // =====================================================
 // LOAD DASHBOARD STATS

@@ -17,6 +17,8 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import PaymentDetailModal from "../components/modals/PaymentDetailModal"
+import { loadAdminPayments } from "../services/adminPaymentService"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
   paymentMethodOptions,
@@ -25,11 +27,7 @@ import {
   paymentUserTypeOptions,
 } from "../data/payments"
 
-import {
-  loadAdminPayments,
-  subscribeToPayments,
-  unsubscribeFromPayments,
-} from "../services/adminPaymentService"
+
 
 
 // =====================================================
@@ -52,13 +50,15 @@ function Payments() {
 // LOAD PAYMENTS FROM SUPABASE
 // =====================================================
 
-async function loadPayments() {
-  setIsLoading(true)
+async function loadPayments({ silent = false } = {}) {
+  if (!silent) {
+    setIsLoading(true)
+  }
+
   setLoadError("")
 
   try {
     const realPayments = await loadAdminPayments()
-
     setPaymentData(realPayments)
   } catch (error) {
     console.error("Failed to load payments:", error)
@@ -70,25 +70,38 @@ async function loadPayments() {
 
     setPaymentData([])
   } finally {
-    setIsLoading(false)
+    if (!silent) {
+      setIsLoading(false)
+    }
   }
 }
 
 // =====================================================
-// INITIAL LOAD + REALTIME SUBSCRIPTION
+// INITIAL LOAD
 // =====================================================
 
 useEffect(() => {
   loadPayments()
-
-  const channel = subscribeToPayments(() => {
-    loadPayments()
-  })
-
-  return () => {
-    unsubscribeFromPayments(channel)
-  }
 }, [])
+
+// =====================================================
+// REALTIME REFRESH
+// =====================================================
+
+useAdminRealtimeRefresh({
+  channelName: "admin-payments-realtime",
+  tables: [
+    "payment_transactions",
+    "guest_bookings",
+    "reservations",
+  ],
+  onRefresh: () => {
+    loadPayments({ silent: true })
+  },
+  onStatusChange: (statusInfo) => {
+    console.log("Payments realtime:", statusInfo.label)
+  },
+})
 
   // =====================================================
   // FILTERED PAYMENTS

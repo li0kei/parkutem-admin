@@ -16,26 +16,22 @@ import {
 import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
+import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
+import { loadAdminAnprLogs } from "../services/adminAnprLogService"
 
 import {
-  anprLogs,
   anprStatusOptions,
   gateOptions,
   userTypeOptions,
 } from "../data/anprLogs"
 
-import {
-  loadAdminAnprLogs,
-  subscribeToAnprLogs,
-  unsubscribeFromAnprLogs,
-} from "../services/adminAnprLogService"
 
 // =====================================================
 // ANPR LOGS PAGE
 // =====================================================
 
 function ANPRLogs() {
-  const [logData, setLogData] = useState(anprLogs)
+  const [logData, setLogData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -48,43 +44,62 @@ function ANPRLogs() {
   // LOAD ANPR LOGS FROM SUPABASE
   // =====================================================
 
-  async function loadLogs() {
-    setIsLoading(true)
-    setLoadError("")
+    async function loadLogs({ silent = false } = {}) {
+      if (!silent) {
+        setIsLoading(true)
+      }
 
-    try {
-      const realLogs = await loadAdminAnprLogs()
+      setLoadError("")
 
-      setLogData(realLogs)
-    } catch (error) {
-      console.error("Failed to load ANPR logs:", error)
+      try {
+        const realLogs = await loadAdminAnprLogs()
+        setLogData(realLogs)
+      } catch (error) {
+        console.error("Failed to load ANPR logs:", error)
 
-      setLoadError(
-        error.message ||
-          "Unable to load ANPR logs from Supabase. Please check table access or schema."
-      )
+        setLoadError(
+          error.message ||
+            "Unable to load ANPR logs from Supabase. Please check table access or schema."
+        )
 
-      setLogData(anprLogs)
-    } finally {
-      setIsLoading(false)
+        setLogData([])
+      } finally {
+        if (!silent) {
+          setIsLoading(false)
+        }
+      }
     }
-  }
 
-  // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
-  // =====================================================
+    // =====================================================
+    // INITIAL LOAD
+    // =====================================================
 
-  useEffect(() => {
-    loadLogs()
-
-    const channel = subscribeToAnprLogs(() => {
+    useEffect(() => {
       loadLogs()
-    })
+    }, [])
 
-    return () => {
-      unsubscribeFromAnprLogs(channel)
-    }
-  }, [])
+    // =====================================================
+    // REALTIME REFRESH
+    // =====================================================
+
+    useAdminRealtimeRefresh({
+      channelName: "admin-anpr-logs-realtime",
+      tables: [
+        "anpr_logs",
+        "guest_bookings",
+        "vehicle_records",
+        "university_users",
+        "reservations",
+        "parking_bays",
+        "payment_transactions",
+      ],
+      onRefresh: () => {
+        loadLogs({ silent: true })
+      },
+      onStatusChange: (statusInfo) => {
+        console.log("ANPR logs realtime:", statusInfo.label)
+      },
+    })
 
   // =====================================================
   // FILTERED LOGS
@@ -546,24 +561,26 @@ function PaymentPill({ status }) {
 // =====================================================
 
 function ConfidenceBar({ value }) {
+  const safeValue = Number(value || 0)
+
   const color =
-    value >= 90
+    safeValue >= 90
       ? "bg-emerald-500"
-      : value >= 80
+      : safeValue >= 80
         ? "bg-cyan-500"
         : "bg-orange-500"
 
   return (
     <div className="w-40 max-w-full">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-black text-slate-700">{value}%</p>
+        <p className="text-sm font-black text-slate-700">{safeValue}%</p>
         <p className="text-xs font-semibold text-slate-400">confidence</p>
       </div>
 
       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
         <div
           className={`h-full rounded-full ${color}`}
-          style={{ width: `${value}%` }}
+          style={{ width: `${Math.min(safeValue, 100)}%` }}
         />
       </div>
     </div>

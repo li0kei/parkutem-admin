@@ -149,27 +149,168 @@ function mapExpiredReason(reason) {
 }
 
 // =====================================================
-// DERIVE ENTRY STATUS PLACEHOLDER
-// Actual entry/exit status will come from ANPR logs later.
+// GET LOG EVENT TIME
 // =====================================================
 
-function deriveEntryStatus(booking) {
-  if (booking.booking_status === "expired") {
-    return "Not Entered"
+function getLogEventTime(log) {
+  if (!log) {
+    return null
   }
 
-  if (booking.booking_status === "cancelled") {
-    return "Not Entered"
+  if (log.detection_type === "entry") {
+    return log.entry_time || log.detected_at || log.created_at
+  }
+
+  if (log.detection_type === "exit") {
+    return log.exit_time || log.detected_at || log.created_at
+  }
+
+  return log.detected_at || log.created_at
+}
+
+// =====================================================
+// BUILD ANPR LOG MAP BY GUEST BOOKING
+// =====================================================
+
+function buildGuestAnprLogMap(anprLogs = []) {
+  return anprLogs.reduce((map, log) => {
+    const bookingId = log.matched_guest_booking_id
+
+    if (!bookingId) {
+      return map
+    }
+
+    if (!map[bookingId]) {
+      map[bookingId] = {
+        entryLog: null,
+        exitLog: null,
+      }
+    }
+
+    const currentLogTime = new Date(getLogEventTime(log) || 0).getTime()
+
+    if (log.detection_type === "entry") {
+      const currentEntryTime = new Date(
+        getLogEventTime(map[bookingId].entryLog) || 0
+      ).getTime()
+
+      if (!map[bookingId].entryLog || currentLogTime > currentEntryTime) {
+        map[bookingId].entryLog = log
+      }
+    }
+
+    if (log.detection_type === "exit") {
+      const currentExitTime = new Date(
+        getLogEventTime(map[bookingId].exitLog) || 0
+      ).getTime()
+
+      if (!map[bookingId].exitLog || currentLogTime > currentExitTime) {
+        map[bookingId].exitLog = log
+      }
+    }
+
+    return map
+  }, {})
+}
+
+// =====================================================
+// CHECK GUEST OVERSTAY
+// Overstay rule:
+// Guest has entered, no exit detected, and current time is
+// more than 1 hour after visit_end_at.
+// =====================================================
+
+function isGuestOverstay(booking, guestAnprLogMap = {}) {
+  const logs = guestAnprLogMap[booking.id]
+
+  if (!logs?.entryLog) {
+    return false
+  }
+
+  if (logs?.exitLog) {
+    return false
+  }
+
+  if (!booking.visit_end_at) {
+    return false
+  }
+
+  const visitEndTime = new Date(booking.visit_end_at).getTime()
+  const overstayThresholdTime = visitEndTime + 60 * 60 * 1000
+
+  return Date.now() >= overstayThresholdTime
+}
+
+// =====================================================
+// DERIVE GUEST ENTRY STATUS
+// =====================================================
+
+function deriveGuestEntryStatus(booking, guestAnprLogMap = {}) {
+  const logs = guestAnprLogMap[booking.id]
+
+  if (logs?.exitLog) {
+    return "Exited"
+  }
+
+  if (isGuestOverstay(booking, guestAnprLogMap)) {
+    return "Overstay"
+  }
+
+  if (logs?.entryLog) {
+    return "Entered"
+  }
+
+  if (
+    booking.booking_status === "expired" &&
+    booking.expired_reason === "no_show"
+  ) {
+    return "No Show"
   }
 
   return "Not Entered"
 }
 
 // =====================================================
+// GET GUEST ENTRY TIME
+// =====================================================
+
+function getGuestEntryTime(booking, guestAnprLogMap = {}) {
+  const logs = guestAnprLogMap[booking.id]
+  const entryTime = getLogEventTime(logs?.entryLog)
+
+  return formatAdminDateTime(entryTime)
+}
+
+// =====================================================
+// GET GUEST EXIT TIME
+// =====================================================
+
+function getGuestExitTime(booking, guestAnprLogMap = {}) {
+  const logs = guestAnprLogMap[booking.id]
+  const exitTime = getLogEventTime(logs?.exitLog)
+
+  return formatAdminDateTime(exitTime)
+}
+
+// =====================================================
 // GET BOOKING REMARKS
 // =====================================================
 
-function getGuestBookingRemarks(booking) {
+function getGuestBookingRemarks(booking, guestAnprLogMap = {}) {
+  const logs = guestAnprLogMap[booking.id]
+
+  if (logs?.exitLog) {
+    return "Guest vehicle has exited. ANPR exit record was detected."
+  }
+
+  if (isGuestOverstay(booking, guestAnprLogMap)) {
+    return "Guest vehicle has entered but no exit record was detected more than 1 hour after the booked visit ended. Overstay email notification may be sent automatically."
+  }
+
+  if (logs?.entryLog) {
+    return "Guest vehicle has entered through ANPR. No exit record detected yet."
+  }
+
   if (booking.expired_reason === "no_show") {
     return "Guest did not enter within the 30-minute no-show grace period. Payment remains paid and non-refundable."
   }
@@ -240,10 +381,42 @@ export async function fetchGuestBookings() {
 }
 
 // =====================================================
+// FETCH GUEST ANPR LOGS
+// =====================================================
+
+export async function fetchGuestAnprLogs() {
+  const { data, error } = await supabase
+    .from("anpr_logs")
+    .select(
+      `
+      id,
+      matched_guest_booking_id,
+      detection_type,
+      access_status,
+      access_decision,
+      reason,
+      detected_at,
+      entry_time,
+      exit_time,
+      created_at
+      `
+    )
+    .not("matched_guest_booking_id", "is", null)
+    .order("detected_at", { ascending: false })
+
+  if (error) {
+    console.error("Fetch guest ANPR logs error:", error)
+    throw new Error(error.message || "Failed to fetch guest ANPR logs.")
+  }
+
+  return data || []
+}
+
+// =====================================================
 // MAP GUEST BOOKING FOR EXISTING ADMIN UI
 // =====================================================
 
-export function mapGuestBookingForAdmin(booking) {
+export function mapGuestBookingForAdmin(booking, guestAnprLogMap = {}) {
   const zoneName = booking.parking_zones?.zone_name || "Zone A"
   const locationName = booking.parking_zones?.location_name || "-"
 
@@ -275,9 +448,10 @@ export function mapGuestBookingForAdmin(booking) {
     receiptStatus: booking.payment_status === "paid" ? "Ready" : "Pending",
 
     anprAccess: mapAnprAccessStatus(booking.anpr_access_status),
-    entryStatus: deriveEntryStatus(booking),
-    entryTime: "-",
-    exitTime: "-",
+
+    entryStatus: deriveGuestEntryStatus(booking, guestAnprLogMap),
+    entryTime: getGuestEntryTime(booking, guestAnprLogMap),
+    exitTime: getGuestExitTime(booking, guestAnprLogMap),
 
     bookingStatus: mapBookingStatus(booking.booking_status),
 
@@ -285,7 +459,7 @@ export function mapGuestBookingForAdmin(booking) {
     expiredAt: formatAdminDateTime(booking.expired_at),
     noShowCheckedAt: formatAdminDateTime(booking.no_show_checked_at),
 
-    remarks: getGuestBookingRemarks(booking),
+    remarks: getGuestBookingRemarks(booking, guestAnprLogMap),
 
     raw: booking,
     source: "supabase",
@@ -297,40 +471,14 @@ export function mapGuestBookingForAdmin(booking) {
 // =====================================================
 
 export async function loadAdminGuestBookings() {
-  const bookings = await fetchGuestBookings()
+  const [bookings, anprLogs] = await Promise.all([
+    fetchGuestBookings(),
+    fetchGuestAnprLogs(),
+  ])
 
-  return bookings.map(mapGuestBookingForAdmin)
-}
+  const guestAnprLogMap = buildGuestAnprLogMap(anprLogs)
 
-// =====================================================
-// SUBSCRIBE TO GUEST BOOKING CHANGES
-// =====================================================
-
-export function subscribeToGuestBookings(onChange) {
-  const channel = supabase
-    .channel("admin-guest-bookings")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "guest_bookings",
-      },
-      () => {
-        onChange?.()
-      }
-    )
-    .subscribe()
-
-  return channel
-}
-
-// =====================================================
-// REMOVE SUBSCRIPTION
-// =====================================================
-
-export function unsubscribeFromGuestBookings(channel) {
-  if (channel) {
-    supabase.removeChannel(channel)
-  }
+  return bookings.map((booking) =>
+    mapGuestBookingForAdmin(booking, guestAnprLogMap)
+  )
 }
