@@ -10,18 +10,20 @@ import { Car, ShieldCheck, Sparkles } from "lucide-react"
 
 function AuthLayout({ title, subtitle, children }) {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#030816] text-white lg:h-screen lg:overflow-hidden">
+    <main className="min-h-screen overflow-x-hidden bg-[#071827] text-white lg:h-screen lg:overflow-hidden">
       <section className="relative flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 lg:h-screen lg:px-5 lg:py-4">
         {/* =====================================================
             BACKGROUND EFFECTS
             ===================================================== */}
 
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.2),transparent_32%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.24),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.24),transparent_34%)]" />
 
-        <div className="absolute inset-0 opacity-[0.07] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:42px_42px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(15,48,70,0.55),rgba(7,24,39,0.75)_42%,rgba(10,38,58,0.7))]" />
 
-        <div className="absolute left-[-12rem] top-[-12rem] h-[30rem] w-[30rem] rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="absolute bottom-[-14rem] right-[-10rem] h-[32rem] w-[32rem] rounded-full bg-sky-500/10 blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.095] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:42px_42px]" />
+
+        <div className="absolute left-[-12rem] top-[-12rem] h-[30rem] w-[30rem] rounded-full bg-cyan-300/14 blur-3xl" />
+        <div className="absolute bottom-[-14rem] right-[-10rem] h-[32rem] w-[32rem] rounded-full bg-sky-400/14 blur-3xl" />
 
         {/* =====================================================
             MAIN CONTENT
@@ -33,13 +35,13 @@ function AuthLayout({ title, subtitle, children }) {
               ===================================================== */}
 
           <div className="hidden lg:block">
-            <div className="mb-7 inline-flex items-center gap-3 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-sm font-black text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,0.08)] backdrop-blur">
+            <div className="mb-7 inline-flex items-center gap-3 rounded-full border border-cyan-200/25 bg-cyan-200/12 px-4 py-2.5 text-sm font-black text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.1)] backdrop-blur">
               <Sparkles className="h-4 w-4" />
               ANPR-Based Smart Campus Parking
             </div>
 
             <div className="flex items-center gap-6">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.6rem] border border-cyan-300/20 bg-black shadow-[0_0_35px_rgba(34,211,238,0.16)]">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.6rem] border border-cyan-200/25 bg-slate-950/70 shadow-[0_0_35px_rgba(34,211,238,0.18)]">
                 <img
                   src="/parkutem-logo.jpeg"
                   alt="ParkUTeM Logo"
@@ -48,7 +50,7 @@ function AuthLayout({ title, subtitle, children }) {
               </div>
 
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-300">
+                <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
                   Admin Portal
                 </p>
 
@@ -64,38 +66,38 @@ function AuthLayout({ title, subtitle, children }) {
               Made Smarter.
             </h2>
 
-            <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300">
+            <p className="mt-5 max-w-2xl text-base leading-8 text-slate-200">
               Monitor ANPR access, guest bookings, parking bays, vehicle
               stickers, reservations, payments, and support issues from one
               clean admin dashboard.
             </p>
 
             <div className="mt-8 grid max-w-2xl grid-cols-3 gap-4">
-              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+              <div className="rounded-[1.4rem] border border-white/12 bg-white/[0.07] p-4 shadow-sm backdrop-blur">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200/25 bg-cyan-200/12 text-cyan-200">
                   <Car className="h-5 w-5" />
                 </div>
 
                 <h3 className="text-sm font-black text-white">Vehicles</h3>
-                <p className="mt-1 text-xs text-slate-400">Plate records</p>
+                <p className="mt-1 text-xs text-slate-300">Plate records</p>
               </div>
 
-              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+              <div className="rounded-[1.4rem] border border-white/12 bg-white/[0.07] p-4 shadow-sm backdrop-blur">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200/25 bg-cyan-200/12 text-cyan-200">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
 
                 <h3 className="text-sm font-black text-white">ANPR</h3>
-                <p className="mt-1 text-xs text-slate-400">Access logs</p>
+                <p className="mt-1 text-xs text-slate-300">Access logs</p>
               </div>
 
-              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+              <div className="rounded-[1.4rem] border border-white/12 bg-white/[0.07] p-4 shadow-sm backdrop-blur">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200/25 bg-cyan-200/12 text-cyan-200">
                   <Sparkles className="h-5 w-5" />
                 </div>
 
                 <h3 className="text-sm font-black text-white">Smart</h3>
-                <p className="mt-1 text-xs text-slate-400">Live status</p>
+                <p className="mt-1 text-xs text-slate-300">Live status</p>
               </div>
             </div>
           </div>
@@ -110,7 +112,7 @@ function AuthLayout({ title, subtitle, children }) {
                 ===================================================== */}
 
             <div className="mb-5 flex items-center justify-center gap-4 lg:hidden">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-cyan-300/20 bg-black shadow-[0_0_28px_rgba(34,211,238,0.16)]">
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-cyan-200/25 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.18)]">
                 <img
                   src="/parkutem-logo.jpeg"
                   alt="ParkUTeM Logo"
@@ -119,7 +121,7 @@ function AuthLayout({ title, subtitle, children }) {
               </div>
 
               <div>
-                <p className="text-[0.65rem] font-black uppercase tracking-[0.35em] text-cyan-300">
+                <p className="text-[0.65rem] font-black uppercase tracking-[0.35em] text-cyan-200">
                   Admin Portal
                 </p>
 
@@ -133,8 +135,8 @@ function AuthLayout({ title, subtitle, children }) {
                 LOGIN CARD
                 ===================================================== */}
 
-            <div className="rounded-[1.8rem] border border-white/10 bg-slate-900/85 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-7 lg:rounded-[2rem]">
-              <p className="mb-4 text-xs font-black uppercase tracking-[0.42em] text-cyan-300">
+            <div className="rounded-[1.8rem] border border-white/12 bg-[#12263a]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-7 lg:rounded-[2rem]">
+              <p className="mb-4 text-xs font-black uppercase tracking-[0.42em] text-cyan-200">
                 ParkUTeM Portal
               </p>
 
@@ -142,14 +144,14 @@ function AuthLayout({ title, subtitle, children }) {
                 {title}
               </h2>
 
-              <p className="mt-2 text-sm leading-6 text-slate-400">
+              <p className="mt-2 text-sm leading-6 text-slate-300">
                 {subtitle}
               </p>
 
               <div className="mt-6">{children}</div>
             </div>
 
-            <p className="mt-4 text-center text-xs font-semibold text-slate-500">
+            <p className="mt-4 text-center text-xs font-semibold text-slate-400">
               © 2026 ParkUTeM Admin Prototype.
             </p>
           </div>

@@ -63,12 +63,12 @@ function formatDuration(entryTime, exitTime) {
 // NORMALIZE UI STATUS
 // =====================================================
 
-function mapAccessStatus(status, decision) {
-  if (status === "approved" || decision === "allowed") {
+function mapAccessStatus(status) {
+  if (status === "approved") {
     return "Approved"
   }
 
-  if (status === "flagged" || decision === "review") {
+  if (status === "flagged") {
     return "Flagged"
   }
 
@@ -116,22 +116,43 @@ export async function fetchAnprLogs() {
     .select(
       `
       id,
-      plate_number,
+      detected_plate_number,
       normalized_plate_number,
-      owner_name,
+      confidence_score,
       user_type,
       detection_type,
+      zone_id,
+      bay_id,
+      matched_user_id,
+      matched_vehicle_id,
+      matched_guest_booking_id,
+      matched_reservation_id,
+      access_status,
+      access_decision,
+      reason,
+      image_url,
+      source_device,
+      processing_mode,
+      detected_at,
+      created_at,
+      updated_at,
+      plate_number,
+      owner_name,
       gate_location,
       parking_zone,
       confidence,
-      access_status,
-      access_decision,
       payment_status,
       remarks,
       entry_time,
       exit_time,
-      detected_at,
-      matched_guest_booking_id,
+      raw_payload,
+      model_name,
+      model_version,
+      ocr_engine,
+      ocr_raw_text,
+      ocr_confidence,
+      yolo_confidence,
+      processing_time_ms,
       guest_bookings (
         booking_reference,
         visitor_name,
@@ -152,6 +173,51 @@ export async function fetchAnprLogs() {
 }
 
 // =====================================================
+// PROCESS ADMIN ANPR DETECTION
+// =====================================================
+
+export async function processAdminAnprDetection({
+  plateNumber,
+  detectionType,
+  gateLocation = "Main Gate",
+  sourceDevice = "admin_simulator",
+  processingMode = "manual_test",
+  confidenceScore = 99,
+  duplicateWindowSeconds = 0,
+}) {
+  const cleanPlate = String(plateNumber || "").trim()
+
+  if (!cleanPlate) {
+    throw new Error("Please enter a plate number.")
+  }
+
+  const { data, error } = await supabase.rpc("process_anpr_detection", {
+    p_plate_number: cleanPlate,
+    p_detection_type: detectionType,
+    p_gate_location: gateLocation,
+    p_source_device: sourceDevice,
+    p_processing_mode: processingMode,
+    p_confidence_score: Number(confidenceScore || 0),
+    p_raw_payload: {
+      source: "admin_anpr_simulator_ui",
+      submitted_at: new Date().toISOString(),
+    },
+    p_duplicate_window_seconds: duplicateWindowSeconds,
+  })
+
+  if (error) {
+    console.error("Process ANPR detection error:", error)
+    throw new Error(error.message || "Failed to process ANPR detection.")
+  }
+
+  if (!data?.success) {
+    throw new Error(data?.error || "ANPR detection was not processed.")
+  }
+
+  return data
+}
+
+// =====================================================
 // MAP ANPR LOG FOR ADMIN UI
 // =====================================================
 
@@ -167,12 +233,23 @@ export function mapAnprLogForAdmin(log) {
   const entryTime = log.entry_time || log.detected_at
   const exitTime = log.exit_time
 
+  const confidenceValue =
+    log.confidence_score ?? log.confidence ?? log.yolo_confidence ?? 0
+
   return {
     id: log.id,
 
-    plateNumber: log.plate_number || log.normalized_plate_number || "-",
+    plateNumber:
+      log.plate_number ||
+      log.detected_plate_number ||
+      log.normalized_plate_number ||
+      "-",
+
+    normalizedPlateNumber: log.normalized_plate_number || "-",
     ownerName,
     userType,
+
+    detectionType: log.detection_type || "-",
 
     entryTime: formatAdminDateTime(entryTime),
     exitTime: formatAdminDateTime(exitTime),
@@ -181,17 +258,22 @@ export function mapAnprLogForAdmin(log) {
     gateLocation: log.gate_location || "Main Gate",
     parkingZone: log.parking_zone || "-",
 
-    confidence: Number(log.confidence || 0),
+    confidence: Number(confidenceValue || 0),
 
-    status: mapAccessStatus(log.access_status, log.access_decision),
+    status: mapAccessStatus(log.access_status),
+    accessDecision: log.access_decision || "denied",
 
     paymentStatus: mapPaymentStatus(log.payment_status, userType),
 
     remarks:
+      log.reason ||
       log.remarks ||
       (guestBooking
         ? `Matched guest booking ${guestBooking.booking_reference}.`
         : "ANPR detection attempt recorded."),
+
+    sourceDevice: log.source_device || "-",
+    processingMode: log.processing_mode || "-",
 
     raw: log,
     source: "supabase",

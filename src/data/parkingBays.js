@@ -29,6 +29,5 @@ export const sensorStatusOptions = [
   "All Sensors",
   "Online",
   "Offline",
-  "Warning",
   "Placeholder",
 ]

@@ -8,6 +8,8 @@ import {
   CircleCheck,
   CircleHelp,
   MapPin,
+  Play,
+  RefreshCw,
   ScanLine,
   ShieldAlert,
   Timer,
@@ -17,14 +19,17 @@ import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
-import { loadAdminAnprLogs } from "../services/adminAnprLogService"
+
+import {
+  loadAdminAnprLogs,
+  processAdminAnprDetection,
+} from "../services/adminAnprLogService"
 
 import {
   anprStatusOptions,
   gateOptions,
   userTypeOptions,
 } from "../data/anprLogs"
-
 
 // =====================================================
 // MONTH HELPERS
@@ -86,6 +91,17 @@ function formatSelectedMonthLabel(selectedMonth) {
 }
 
 // =====================================================
+// INITIAL SIMULATOR FORM
+// =====================================================
+
+const initialSimulatorForm = {
+  plateNumber: "",
+  detectionType: "entry",
+  gateLocation: "Main Gate",
+  confidenceScore: 99,
+}
+
+// =====================================================
 // ANPR LOGS PAGE
 // =====================================================
 
@@ -100,74 +116,129 @@ function ANPRLogs() {
   const [selectedGate, setSelectedGate] = useState("All Gates")
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
+  const [simulatorForm, setSimulatorForm] = useState(initialSimulatorForm)
+  const [simulatorResult, setSimulatorResult] = useState(null)
+  const [simulatorError, setSimulatorError] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
+
   // =====================================================
   // LOAD ANPR LOGS FROM SUPABASE
   // =====================================================
 
-    async function loadLogs({ silent = false } = {}) {
-      if (!silent) {
-        setIsLoading(true)
-      }
-
-      setLoadError("")
-
-      try {
-        const realLogs = await loadAdminAnprLogs()
-        setLogData(realLogs)
-      } catch (error) {
-        console.error("Failed to load ANPR logs:", error)
-
-        setLoadError(
-          error.message ||
-            "Unable to load ANPR logs from Supabase. Please check table access or schema."
-        )
-
-        setLogData([])
-      } finally {
-        if (!silent) {
-          setIsLoading(false)
-        }
-      }
+  async function loadLogs({ silent = false } = {}) {
+    if (!silent) {
+      setIsLoading(true)
     }
 
-    // =====================================================
-    // INITIAL LOAD
-    // =====================================================
+    setLoadError("")
 
-    useEffect(() => {
-      loadLogs()
-    }, [])
+    try {
+      const realLogs = await loadAdminAnprLogs()
+      setLogData(realLogs)
+    } catch (error) {
+      console.error("Failed to load ANPR logs:", error)
 
-    // =====================================================
-    // REALTIME REFRESH
-    // =====================================================
+      setLoadError(
+        error.message ||
+          "Unable to load ANPR logs from Supabase. Please check table access or schema."
+      )
 
-    useAdminRealtimeRefresh({
-      channelName: "admin-anpr-logs-realtime",
-      tables: [
-        "anpr_logs",
-        "guest_bookings",
-        "vehicle_records",
-        "university_users",
-        "reservations",
-        "parking_bays",
-        "payment_transactions",
-      ],
-      onRefresh: () => {
-        loadLogs({ silent: true })
-      },
-      onStatusChange: (statusInfo) => {
-        console.log("ANPR logs realtime:", statusInfo.label)
-      },
-    })
+      setLogData([])
+    } finally {
+      if (!silent) {
+        setIsLoading(false)
+      }
+    }
+  }
 
-// =====================================================
-// MONTHLY ANPR LOG DATA
-// =====================================================
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
 
-const monthlyLogData = useMemo(() => {
-  return logData.filter((log) => isAnprLogInSelectedMonth(log, selectedMonth))
-}, [logData, selectedMonth])
+  useEffect(() => {
+    loadLogs()
+  }, [])
+
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
+
+  useAdminRealtimeRefresh({
+    channelName: "admin-anpr-logs-realtime",
+    tables: [
+      "anpr_logs",
+      "guest_bookings",
+      "vehicle_records",
+      "university_users",
+      "reservations",
+      "parking_bays",
+      "payment_transactions",
+    ],
+    onRefresh: () => {
+      loadLogs({ silent: true })
+    },
+    onStatusChange: (statusInfo) => {
+      console.log("ANPR logs realtime:", statusInfo.label)
+    },
+  })
+
+  // =====================================================
+  // HANDLE SIMULATOR FIELD CHANGE
+  // =====================================================
+
+  function handleSimulatorChange(field, value) {
+    setSimulatorForm((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  // =====================================================
+  // PROCESS SIMULATED ANPR DETECTION
+  // =====================================================
+
+  async function handleProcessDetection(event) {
+    event.preventDefault()
+
+    setSimulatorError("")
+    setSimulatorResult(null)
+    setIsProcessing(true)
+
+    try {
+      const result = await processAdminAnprDetection({
+        plateNumber: simulatorForm.plateNumber,
+        detectionType: simulatorForm.detectionType,
+        gateLocation: simulatorForm.gateLocation,
+        confidenceScore: simulatorForm.confidenceScore,
+      })
+
+      setSimulatorResult(result)
+      await loadLogs({ silent: true })
+    } catch (error) {
+      console.error("Admin ANPR simulator error:", error)
+      setSimulatorError(error.message || "Failed to process ANPR detection.")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // =====================================================
+  // RESET SIMULATOR
+  // =====================================================
+
+  function handleResetSimulator() {
+    setSimulatorForm(initialSimulatorForm)
+    setSimulatorResult(null)
+    setSimulatorError("")
+  }
+
+  // =====================================================
+  // MONTHLY ANPR LOG DATA
+  // =====================================================
+
+  const monthlyLogData = useMemo(() => {
+    return logData.filter((log) => isAnprLogInSelectedMonth(log, selectedMonth))
+  }, [logData, selectedMonth])
 
   // =====================================================
   // FILTERED LOGS
@@ -196,33 +267,34 @@ const monthlyLogData = useMemo(() => {
     })
   }, [monthlyLogData, searchTerm, selectedStatus, selectedUserType, selectedGate])
 
-// =====================================================
-// SUMMARY COUNTS
-// =====================================================
+  // =====================================================
+  // SUMMARY COUNTS
+  // =====================================================
 
-const summary = useMemo(() => {
-  return {
-    total: monthlyLogData.length,
+  const summary = useMemo(() => {
+    return {
+      total: monthlyLogData.length,
 
-    approved: monthlyLogData.filter((log) => log.status === "Approved").length,
+      approved: monthlyLogData.filter((log) => log.status === "Approved")
+        .length,
 
-    flagged: monthlyLogData.filter((log) => log.status === "Flagged").length,
+      flagged: monthlyLogData.filter((log) => log.status === "Flagged").length,
 
-    unknown: monthlyLogData.filter((log) => log.status === "Unknown").length,
+      unknown: monthlyLogData.filter((log) => log.status === "Unknown").length,
 
-    guests: monthlyLogData.filter((log) => log.userType === "Guest").length,
+      guests: monthlyLogData.filter((log) => log.userType === "Guest").length,
 
-    active: monthlyLogData.filter(
-      (log) => log.exitTime === "-" && log.status === "Approved"
-    ).length,
-  }
-}, [monthlyLogData])
+      active: monthlyLogData.filter(
+        (log) => log.exitTime === "-" && log.status === "Approved"
+      ).length,
+    }
+  }, [monthlyLogData])
 
   // =====================================================
   // RESET FILTERS
   // =====================================================
 
- function handleResetFilters() {
+  function handleResetFilters() {
     setSearchTerm("")
     setSelectedStatus("All Status")
     setSelectedUserType("All Types")
@@ -232,22 +304,21 @@ const summary = useMemo(() => {
 
   return (
     <div className="space-y-6">
-
       {/* =====================================================
           SUPABASE LOAD STATUS
           ===================================================== */}
 
-            {loadError && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                {loadError}
-              </div>
-            )}
+      {loadError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {loadError}
+        </div>
+      )}
 
-            {isLoading && (
-              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
-                Loading ANPR logs from Supabase...
-              </div>
-            )}
+      {isLoading && (
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+          Loading ANPR logs from Supabase...
+        </div>
+      )}
 
       {/* =====================================================
           SUMMARY PANEL
@@ -322,52 +393,191 @@ const summary = useMemo(() => {
       </section>
 
       {/* =====================================================
-            MONTH FILTER PANEL
+          ADMIN ANPR SIMULATOR PANEL
           ===================================================== */}
 
-        <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                ANPR Log Month
-              </p>
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 shadow-sm backdrop-blur">
+        <div className="grid gap-0 xl:grid-cols-[1fr_0.8fr]">
+          <div className="border-b border-slate-200 p-5 xl:border-b-0 xl:border-r">
+            <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-600">
+                  ANPR Simulator
+                </p>
 
-              <h3 className="mt-2 text-xl font-black text-slate-950">
-                {formatSelectedMonthLabel(selectedMonth)}
-              </h3>
+                <h3 className="mt-2 text-xl font-black text-slate-950">
+                  Manual Gate Detection Test
+                </h3>
 
-              <p className="mt-1 text-sm font-semibold text-slate-500">
-                Detection logs, approved access, guest entries, and active sessions are
-                filtered by selected month.
-              </p>
+                <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
+                  Test the same backend brain used later by phone camera,
+                  webcam, YOLO/OCR, and ESP32-CAM.
+                </p>
+              </div>
+
+              <span className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white">
+                Manual Test
+              </span>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-              />
+            <form
+              onSubmit={handleProcessDetection}
+              className="grid gap-4 lg:grid-cols-[1fr_0.7fr_0.8fr_0.5fr_auto]"
+            >
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Plate Number
+                </label>
 
-              <button
-                type="button"
-                onClick={() => setSelectedMonth(getCurrentMonthValue())}
-                className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
-              >
-                This Month
-              </button>
+                <input
+                  type="text"
+                  value={simulatorForm.plateNumber}
+                  onChange={(event) =>
+                    handleSimulatorChange(
+                      "plateNumber",
+                      event.target.value.toUpperCase()
+                    )
+                  }
+                  placeholder="ABC1122"
+                  className="h-[52px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                />
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedMonth("")}
-                className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
-              >
-                All Months
-              </button>
-            </div>
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Type
+                </label>
+
+                <select
+                  value={simulatorForm.detectionType}
+                  onChange={(event) =>
+                    handleSimulatorChange("detectionType", event.target.value)
+                  }
+                  className="h-[52px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                >
+                  <option value="entry">Entry</option>
+                  <option value="exit">Exit</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Gate
+                </label>
+
+                <input
+                  type="text"
+                  value={simulatorForm.gateLocation}
+                  onChange={(event) =>
+                    handleSimulatorChange("gateLocation", event.target.value)
+                  }
+                  placeholder="Main Gate"
+                  className="h-[52px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  Confidence
+                </label>
+
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={simulatorForm.confidenceScore}
+                  onChange={(event) =>
+                    handleSimulatorChange(
+                      "confidenceScore",
+                      event.target.value
+                    )
+                  }
+                  className="h-[52px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                />
+              </div>
+
+              <div className="flex items-end gap-2">
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="inline-flex h-[52px] items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isProcessing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  Process
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetSimulator}
+                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+                >
+                  Reset
+                </button>
+              </div>
+            </form>
+
+            {simulatorError && (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                {simulatorError}
+              </div>
+            )}
           </div>
-        </section>
+
+          <SimulatorResultCard result={simulatorResult} />
+        </div>
+      </section>
+
+      {/* =====================================================
+          MONTH FILTER PANEL
+          ===================================================== */}
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              ANPR Log Month
+            </p>
+
+            <h3 className="mt-2 text-xl font-black text-slate-950">
+              {formatSelectedMonthLabel(selectedMonth)}
+            </h3>
+
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Detection logs, approved access, guest entries, and active
+              sessions are filtered by selected month.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            />
+
+            <button
+              type="button"
+              onClick={() => setSelectedMonth(getCurrentMonthValue())}
+              className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+            >
+              This Month
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedMonth("")}
+              className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+            >
+              All Months
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* =====================================================
           FILTER PANEL
@@ -430,7 +640,8 @@ const summary = useMemo(() => {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-             Showing {filteredLogs.length} of {monthlyLogData.length} vehicle logs.
+              Showing {filteredLogs.length} of {monthlyLogData.length} vehicle
+              logs.
             </p>
           </div>
 
@@ -440,7 +651,7 @@ const summary = useMemo(() => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] border-collapse">
+          <table className="w-full min-w-[1120px] border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-100/80 text-left">
                 <TableHead>Vehicle</TableHead>
@@ -466,7 +677,13 @@ const summary = useMemo(() => {
                       </p>
 
                       <p className="mt-1 text-sm font-semibold text-slate-500">
-                        {log.ownerName === "-" ? "No matched owner" : log.ownerName}
+                        {log.ownerName === "-"
+                          ? "No matched owner"
+                          : log.ownerName}
+                      </p>
+
+                      <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                        {log.normalizedPlateNumber}
                       </p>
                     </div>
                   </td>
@@ -503,6 +720,10 @@ const summary = useMemo(() => {
                       <p className="mt-1 text-xs font-semibold text-slate-400">
                         {log.parkingZone}
                       </p>
+
+                      <p className="mt-1 text-xs font-bold text-slate-400">
+                        {log.processingMode}
+                      </p>
                     </div>
                   </td>
 
@@ -523,7 +744,9 @@ const summary = useMemo(() => {
           </table>
         </div>
 
-        {filteredLogs.length === 0 && <EmptyResult onReset={handleResetFilters} />}
+        {filteredLogs.length === 0 && (
+          <EmptyResult onReset={handleResetFilters} />
+        )}
       </section>
 
       {/* =====================================================
@@ -569,7 +792,10 @@ const summary = useMemo(() => {
               <MobileInfo label="Entry Time" value={log.entryTime} />
               <MobileInfo label="Exit Time" value={log.exitTime} />
               <MobileInfo label="Duration" value={log.duration} />
-              <MobileInfo label="Gate" value={`${log.gateLocation} • ${log.parkingZone}`} />
+              <MobileInfo
+                label="Gate"
+                value={`${log.gateLocation} • ${log.parkingZone}`}
+              />
 
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="mb-3 text-xs font-black uppercase tracking-[0.15em] text-slate-400">
@@ -592,8 +818,93 @@ const summary = useMemo(() => {
           </div>
         ))}
 
-        {filteredLogs.length === 0 && <EmptyResult onReset={handleResetFilters} />}
+        {filteredLogs.length === 0 && (
+          <EmptyResult onReset={handleResetFilters} />
+        )}
       </section>
+    </div>
+  )
+}
+
+// =====================================================
+// SIMULATOR RESULT CARD
+// =====================================================
+
+function SimulatorResultCard({ result }) {
+  if (!result) {
+    return (
+      <div className="flex min-h-[260px] flex-col justify-center bg-slate-50 p-5">
+        <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-white p-5 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600">
+            <ScanLine className="h-6 w-6" />
+          </div>
+
+          <h4 className="mt-4 text-lg font-black text-slate-950">
+            Waiting for detection
+          </h4>
+
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+            Enter a plate number and process entry or exit to test the ANPR
+            backend decision engine.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const isAllowed = result.access_decision === "allowed"
+  const isFlagged = result.access_status === "flagged"
+
+  const statusClass = isAllowed
+    ? isFlagged
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-red-200 bg-red-50 text-red-700"
+
+  const title = isAllowed
+    ? isFlagged
+      ? "Allowed but Flagged"
+      : "Access Allowed"
+    : "Access Denied"
+
+  return (
+    <div className="bg-slate-50 p-5">
+      <div className={`rounded-[1.5rem] border p-5 ${statusClass}`}>
+        <p className="text-xs font-black uppercase tracking-[0.18em]">
+          ANPR Decision Result
+        </p>
+
+        <h4 className="mt-2 text-2xl font-black">{title}</h4>
+
+        <p className="mt-2 text-sm font-bold leading-6">{result.reason}</p>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <ResultInfo label="Plate" value={result.normalized_plate_number} />
+        <ResultInfo label="User Type" value={result.user_type} />
+        <ResultInfo label="Owner" value={result.owner_name || "-"} />
+        <ResultInfo label="Gate" value={result.gate_location} />
+        <ResultInfo label="Detection" value={result.detection_type} />
+        <ResultInfo label="Confidence" value={`${result.confidence_score}%`} />
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// RESULT INFO
+// =====================================================
+
+function ResultInfo({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-2 break-words text-sm font-black text-slate-800">
+        {value || "-"}
+      </p>
     </div>
   )
 }
@@ -732,9 +1043,7 @@ function MobileInfo({ label, value }) {
 function EmptyResult({ onReset }) {
   return (
     <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center">
-      <h3 className="text-lg font-black text-slate-950">
-        No ANPR logs found
-      </h3>
+      <h3 className="text-lg font-black text-slate-950">No ANPR logs found</h3>
 
       <p className="mt-2 text-sm text-slate-500">
         Try changing the search keyword or selected filters.

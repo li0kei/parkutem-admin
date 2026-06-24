@@ -9,6 +9,7 @@ import {
   Clock3,
   CreditCard,
   MoreHorizontal,
+  Plus,
   Radio,
   Receipt,
   Timer,
@@ -21,13 +22,21 @@ import GuestBookingModal from "../components/modals/GuestBookingModal"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
 import {
+  cancelGuestBooking,
+  createAdminGuestBooking,
+  deleteGuestBookingSafely,
   guestAnprAccessOptions,
   guestBookingStatusOptions,
   guestEntryStatusOptions,
   guestPaymentStatusOptions,
-} from "../data/guestBookings"
-
-import { loadAdminGuestBookings } from "../services/adminGuestBookingService"
+  loadAdminGuestBookings,
+  resendGuestBookingConfirmationEmail,
+  updateAdminGuestBooking,
+  updateGuestAnprAccessStatus,
+  updateGuestBookingStatus,
+  updateGuestEntryStatus,
+  updateGuestPaymentStatus,
+} from "../services/adminGuestBookingService"
 
 // =====================================================
 // MONTH HELPERS
@@ -90,6 +99,14 @@ function formatSelectedMonthLabel(selectedMonth) {
 }
 
 // =====================================================
+// SAFE SEARCH VALUE
+// =====================================================
+
+function getSearchText(value) {
+  return String(value || "").toLowerCase()
+}
+
+// =====================================================
 // GUEST BOOKING MANAGEMENT PAGE
 // =====================================================
 
@@ -97,6 +114,7 @@ function GuestBookings() {
   const [bookingData, setBookingData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
+  const [pageNotice, setPageNotice] = useState(null)
 
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedBookingStatus, setSelectedBookingStatus] =
@@ -105,12 +123,15 @@ function GuestBookings() {
     useState("All Payments")
   const [selectedAnprAccess, setSelectedAnprAccess] = useState("All ANPR")
   const [selectedEntryStatus, setSelectedEntryStatus] = useState("All Entry")
-  const [selectedBooking, setSelectedBooking] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
 
-// =====================================================
-// LOAD GUEST BOOKINGS
-// =====================================================
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalMode, setModalMode] = useState("view")
+  const [selectedBooking, setSelectedBooking] = useState(null)
+
+  // =====================================================
+  // LOAD GUEST BOOKINGS
+  // =====================================================
 
   async function loadGuestBookings({ silent = false } = {}) {
     if (!silent) {
@@ -122,6 +143,8 @@ function GuestBookings() {
     try {
       const realBookings = await loadAdminGuestBookings()
       setBookingData(realBookings)
+
+      return realBookings
     } catch (error) {
       console.error("Failed to load guest bookings:", error)
 
@@ -130,6 +153,8 @@ function GuestBookings() {
       )
 
       setBookingData([])
+
+      return []
     } finally {
       if (!silent) {
         setIsLoading(false)
@@ -138,16 +163,16 @@ function GuestBookings() {
   }
 
   // =====================================================
-  // INITIAL LOAD + REALTIME SUBSCRIPTION
+  // INITIAL LOAD
   // =====================================================
 
-    useEffect(() => {
-      loadGuestBookings()
-    }, [])
+  useEffect(() => {
+    loadGuestBookings()
+  }, [])
 
-// =====================================================
-// REALTIME REFRESH
-// =====================================================
+  // =====================================================
+  // REALTIME REFRESH
+  // =====================================================
 
   useAdminRealtimeRefresh({
     channelName: "admin-guest-bookings-realtime",
@@ -157,23 +182,118 @@ function GuestBookings() {
       "anpr_logs",
       "guest_email_logs",
     ],
-    onRefresh: () => {
-      loadGuestBookings({ silent: true })
+    onRefresh: async () => {
+      const latestBookings = await loadGuestBookings({ silent: true })
+
+      setSelectedBooking((currentBooking) => {
+        if (!currentBooking) {
+          return currentBooking
+        }
+
+        return (
+          latestBookings.find((booking) => booking.id === currentBooking.id) ||
+          currentBooking
+        )
+      })
     },
     onStatusChange: (statusInfo) => {
       console.log("Guest bookings realtime:", statusInfo.label)
     },
   })
 
-// =====================================================
-// MONTHLY BOOKING DATA
-// =====================================================
+  // =====================================================
+  // NOTICE HELPERS
+  // =====================================================
 
-const monthlyBookingData = useMemo(() => {
-  return bookingData.filter((booking) =>
-    isGuestBookingInSelectedMonth(booking, selectedMonth)
-  )
-}, [bookingData, selectedMonth])
+  function showPageSuccess(message) {
+    setPageNotice({
+      type: "success",
+      message,
+    })
+  }
+
+  function showPageWarning(message) {
+    setPageNotice({
+      type: "warning",
+      message,
+    })
+  }
+
+  function showPageError(message) {
+    setPageNotice({
+      type: "error",
+      message,
+    })
+  }
+
+  function clearPageNotice() {
+    setPageNotice(null)
+  }
+
+  // =====================================================
+  // REFRESH AFTER ACTION
+  // =====================================================
+
+  async function refreshBookingsAfterAction(
+    bookingId,
+    { closeModal = false } = {}
+  ) {
+    const latestBookings = await loadGuestBookings({ silent: true })
+
+    if (closeModal) {
+      setSelectedBooking(null)
+      setModalMode("view")
+      setIsModalOpen(false)
+
+      return latestBookings
+    }
+
+    if (bookingId) {
+      const latestBooking = latestBookings.find(
+        (booking) => booking.id === bookingId
+      )
+
+      if (latestBooking) {
+        setSelectedBooking(latestBooking)
+      }
+    }
+
+    return latestBookings
+  }
+
+  // =====================================================
+  // MODAL OPEN HELPERS
+  // =====================================================
+
+  function openCreateModal() {
+    clearPageNotice()
+    setSelectedBooking(null)
+    setModalMode("create")
+    setIsModalOpen(true)
+  }
+
+  function openDetailsModal(booking) {
+    clearPageNotice()
+    setSelectedBooking(booking)
+    setModalMode("view")
+    setIsModalOpen(true)
+  }
+
+  function closeModal() {
+    setSelectedBooking(null)
+    setModalMode("view")
+    setIsModalOpen(false)
+  }
+
+  // =====================================================
+  // MONTHLY BOOKING DATA
+  // =====================================================
+
+  const monthlyBookingData = useMemo(() => {
+    return bookingData.filter((booking) =>
+      isGuestBookingInSelectedMonth(booking, selectedMonth)
+    )
+  }, [bookingData, selectedMonth])
 
   // =====================================================
   // FILTERED BOOKINGS
@@ -184,13 +304,14 @@ const monthlyBookingData = useMemo(() => {
       const searchValue = searchTerm.toLowerCase()
 
       const matchesSearch =
-        booking.bookingId.toLowerCase().includes(searchValue) ||
-        booking.guestName.toLowerCase().includes(searchValue) ||
-        booking.email.toLowerCase().includes(searchValue) ||
-        booking.phone.toLowerCase().includes(searchValue) ||
-        booking.vehiclePlate.toLowerCase().includes(searchValue) ||
-        booking.visitPurpose.toLowerCase().includes(searchValue) ||
-        booking.hostDepartment.toLowerCase().includes(searchValue)
+        getSearchText(booking.bookingId).includes(searchValue) ||
+        getSearchText(booking.guestName).includes(searchValue) ||
+        getSearchText(booking.email).includes(searchValue) ||
+        getSearchText(booking.phone).includes(searchValue) ||
+        getSearchText(booking.vehiclePlate).includes(searchValue) ||
+        getSearchText(booking.paymentReference).includes(searchValue) ||
+        getSearchText(booking.visitPurpose).includes(searchValue) ||
+        getSearchText(booking.hostDepartment).includes(searchValue)
 
       const matchesBookingStatus =
         selectedBookingStatus === "All Status" ||
@@ -208,7 +329,13 @@ const monthlyBookingData = useMemo(() => {
         selectedEntryStatus === "All Entry" ||
         booking.entryStatus === selectedEntryStatus
 
-      return matchesSearch && matchesBookingStatus && matchesPayment && matchesAnpr && matchesEntry
+      return (
+        matchesSearch &&
+        matchesBookingStatus &&
+        matchesPayment &&
+        matchesAnpr &&
+        matchesEntry
+      )
     })
   }, [
     monthlyBookingData,
@@ -219,109 +346,297 @@ const monthlyBookingData = useMemo(() => {
     selectedEntryStatus,
   ])
 
-// =====================================================
-// SUMMARY COUNTS
-// =====================================================
+  // =====================================================
+  // SUMMARY COUNTS
+  // =====================================================
 
-const summary = useMemo(() => {
-  const guestRevenue = monthlyBookingData
-    .filter((booking) => booking.paymentStatus === "Paid")
-    .reduce((total, booking) => total + booking.parkingFee, 0)
+  const summary = useMemo(() => {
+    const guestRevenue = monthlyBookingData
+      .filter((booking) => booking.paymentStatus === "Paid")
+      .reduce((total, booking) => total + booking.parkingFee, 0)
 
-  return {
-    total: monthlyBookingData.length,
+    return {
+      total: monthlyBookingData.length,
 
-    paid: monthlyBookingData.filter(
-      (booking) => booking.paymentStatus === "Paid"
-    ).length,
+      paid: monthlyBookingData.filter(
+        (booking) => booking.paymentStatus === "Paid"
+      ).length,
 
-    confirmed: monthlyBookingData.filter(
-      (booking) => booking.bookingStatus === "Confirmed"
-    ).length,
+      confirmed: monthlyBookingData.filter(
+        (booking) => booking.bookingStatus === "Confirmed"
+      ).length,
 
-    anprActive: monthlyBookingData.filter(
-      (booking) => booking.anprAccess === "Enabled"
-    ).length,
+      anprActive: monthlyBookingData.filter(
+        (booking) => booking.anprAccess === "Enabled"
+      ).length,
 
-    anprEnabled: monthlyBookingData.filter(
-      (booking) => booking.anprAccess === "Enabled"
-    ).length,
+      anprEnabled: monthlyBookingData.filter(
+        (booking) => booking.anprAccess === "Enabled"
+      ).length,
 
-    entered: monthlyBookingData.filter((booking) =>
-      ["Entered", "Overstay", "Exited"].includes(booking.entryStatus)
-    ).length,
+      entered: monthlyBookingData.filter((booking) =>
+        ["Entered", "Overstay", "Exited"].includes(booking.entryStatus)
+      ).length,
 
-    guestRevenue,
+      guestRevenue,
+    }
+  }, [monthlyBookingData])
+
+  // =====================================================
+  // CREATE BOOKING
+  // =====================================================
+
+  async function handleCreateBooking(payload, options = {}) {
+    const result = await createAdminGuestBooking(payload, options)
+    const createdBookingId = result?.booking?.id
+
+    const latestBookings = await refreshBookingsAfterAction(createdBookingId)
+
+    const latestBooking = latestBookings.find(
+      (booking) => booking.id === createdBookingId
+    )
+
+    if (latestBooking) {
+      setSelectedBooking(latestBooking)
+      setModalMode("view")
+      setIsModalOpen(true)
+    }
+
+    if (result?.emailWarning || result?.paymentWarning) {
+      showPageWarning(
+        [result.paymentWarning, result.emailWarning].filter(Boolean).join(" ")
+      )
+    } else {
+      showPageSuccess("Guest booking created successfully.")
+    }
+
+    return result
   }
-}, [monthlyBookingData])
+
+  // =====================================================
+  // SAVE BOOKING
+  // =====================================================
+
+  async function handleSaveBooking(bookingId, payload, options = {}) {
+    const result = await updateAdminGuestBooking(bookingId, payload, options)
+
+    await refreshBookingsAfterAction(bookingId)
+    setModalMode("view")
+
+    if (result?.emailWarning || result?.paymentWarning) {
+      showPageWarning(
+        [result.paymentWarning, result.emailWarning].filter(Boolean).join(" ")
+      )
+    } else {
+      showPageSuccess("Guest booking updated successfully.")
+    }
+
+    return result
+  }
 
   // =====================================================
   // UPDATE BOOKING STATUS
   // =====================================================
 
-  function handleUpdateBookingStatus(bookingId, newStatus) {
-    const updateBooking = (booking) => {
-      if (booking.id !== bookingId) {
-        return booking
-      }
+  async function handleUpdateBookingStatus(bookingId, newStatus) {
+    const updatedBooking = await updateGuestBookingStatus(bookingId, newStatus)
 
-      const nextAnprAccess =
-        newStatus === "Cancelled"
-          ? "Blocked"
-          : newStatus === "Expired"
-            ? "Expired"
-            : booking.anprAccess
+    await refreshBookingsAfterAction(bookingId)
+    showPageSuccess(`Booking status updated to ${newStatus}.`)
 
-      return {
-        ...booking,
-        bookingStatus: newStatus,
-        anprAccess: nextAnprAccess,
-      }
+    return {
+      booking: updatedBooking,
     }
+  }
 
-    setBookingData((prev) => prev.map(updateBooking))
+  // =====================================================
+  // UPDATE PAYMENT STATUS
+  // =====================================================
 
-    setSelectedBooking((prev) => {
-      if (!prev || prev.id !== bookingId) {
-        return prev
-      }
+  async function handleUpdatePaymentStatus(bookingId, newStatus, options = {}) {
+    const result = await updateGuestPaymentStatus(bookingId, newStatus, options)
 
-      return updateBooking(prev)
-    })
+    await refreshBookingsAfterAction(bookingId)
+    showPageSuccess(`Payment status updated to ${newStatus}.`)
+
+    return result
   }
 
   // =====================================================
   // UPDATE ANPR ACCESS
   // =====================================================
 
-  function handleUpdateAnprAccess(bookingId, newAccess) {
-    const updateBooking = (booking) => {
-      if (booking.id !== bookingId) {
-        return booking
+  async function handleUpdateAnprAccess(bookingId, newAccess) {
+    const updatedBooking = await updateGuestAnprAccessStatus(
+      bookingId,
+      newAccess
+    )
+
+    await refreshBookingsAfterAction(bookingId)
+    showPageSuccess(`ANPR access updated to ${newAccess}.`)
+
+    return {
+      booking: updatedBooking,
+    }
+  }
+
+  // =====================================================
+  // UPDATE ENTRY STATUS
+  // =====================================================
+
+  async function handleUpdateEntryStatus(bookingId, entryStatus) {
+    const updatedBooking = await updateGuestEntryStatus(bookingId, entryStatus)
+
+    await refreshBookingsAfterAction(bookingId)
+    showPageSuccess(`Entry status updated to ${entryStatus}.`)
+
+    return {
+      booking: updatedBooking,
+    }
+  }
+
+  // =====================================================
+  // RESEND EMAIL
+  // =====================================================
+
+  async function handleResendEmail(booking) {
+    const result = await resendGuestBookingConfirmationEmail(booking)
+
+    await refreshBookingsAfterAction(booking.id)
+    showPageSuccess("Guest confirmation email sent successfully.")
+
+    return result
+  }
+
+  // =====================================================
+  // CANCEL BOOKING
+  // =====================================================
+
+  async function handleCancelBooking(booking, cancellationMessage = "") {
+    let cleanMessage = String(cancellationMessage || "").trim()
+
+    if (!cleanMessage) {
+      const promptedMessage = window.prompt(
+        "Enter cancellation message from admin. This message will be sent to the guest by email.",
+        "Booking cancelled by admin."
+      )
+
+      if (promptedMessage === null) {
+        throw new Error("Cancellation action was cancelled.")
       }
 
-      return {
-        ...booking,
-        anprAccess: newAccess,
-      }
+      cleanMessage = String(promptedMessage || "").trim()
     }
 
-    setBookingData((prev) => prev.map(updateBooking))
+    const result = await cancelGuestBooking(booking.id, cleanMessage, {
+      sendCancellationEmail: true,
+    })
 
-    setSelectedBooking((prev) => {
-      if (!prev || prev.id !== bookingId) {
-        return prev
+    await refreshBookingsAfterAction(booking.id)
+
+    const warnings = [result?.warning, result?.emailWarning].filter(Boolean)
+
+    if (warnings.length > 0) {
+      showPageWarning(warnings.join(" "))
+    } else if (result?.cancellationEmailResult) {
+      showPageSuccess(
+        "Guest booking cancelled and cancellation email sent successfully. Payment history is preserved."
+      )
+    } else {
+      showPageSuccess(
+        "Guest booking cancelled. Payment history is preserved."
+      )
+    }
+
+    return result
+  }
+
+  // =====================================================
+  // DELETE BOOKING
+  // =====================================================
+
+  async function handleDeleteBooking(booking) {
+    const result = await deleteGuestBookingSafely(booking.id)
+
+    await refreshBookingsAfterAction(null, { closeModal: true })
+    showPageSuccess("Guest booking deleted successfully.")
+
+    return result
+  }
+
+  // =====================================================
+  // TABLE ACTION DROPDOWN
+  // =====================================================
+
+  async function handleTableAction(booking, action) {
+    if (!action) {
+      return
+    }
+
+    clearPageNotice()
+
+    try {
+      if (action === "details") {
+        openDetailsModal(booking)
+        return
       }
 
-      return updateBooking(prev)
-    })
+      if (action === "resend") {
+        if (
+          !window.confirm(
+            "Resend guest booking confirmation email to this guest?"
+          )
+        ) {
+          return
+        }
+
+        await handleResendEmail(booking)
+        return
+      }
+
+      if (action === "cancel") {
+        const cancellationMessage = window.prompt(
+          "Enter cancellation message from admin. This message will be sent to the guest by email.",
+          "Booking cancelled by admin."
+        )
+
+        if (cancellationMessage === null) {
+          return
+        }
+
+        if (
+          !window.confirm(
+            "Cancel this guest booking? Payment history will be preserved and ANPR access will be revoked/expired."
+          )
+        ) {
+          return
+        }
+
+        await handleCancelBooking(booking, cancellationMessage)
+        return
+      }
+
+      if (action === "delete") {
+        if (
+          !window.confirm(
+            "Delete this guest booking? This is only allowed when there is no payment history."
+          )
+        ) {
+          return
+        }
+
+        await handleDeleteBooking(booking)
+      }
+    } catch (error) {
+      showPageError(error.message || "Action failed. Please try again.")
+    }
   }
 
   // =====================================================
   // RESET FILTERS
   // =====================================================
 
- function handleResetFilters() {
+  function handleResetFilters() {
     setSearchTerm("")
     setSelectedBookingStatus("All Status")
     setSelectedPaymentStatus("All Payments")
@@ -331,28 +646,42 @@ const summary = useMemo(() => {
   }
 
   return (
-  <div className="space-y-6">
-    {/* =====================================================
-        SUPABASE LOAD STATUS
-        ===================================================== */}
+    <div className="space-y-6">
+      {/* =====================================================
+          SUPABASE LOAD STATUS
+          ===================================================== */}
 
-    {loadError && (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-        {loadError}
-      </div>
-    )}
+      {pageNotice && (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+            pageNotice.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : pageNotice.type === "warning"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          {pageNotice.message}
+        </div>
+      )}
 
-    {isLoading && (
-      <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
-        Loading real guest bookings from Supabase...
-      </div>
-    )}
+      {loadError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {loadError}
+        </div>
+      )}
 
-    {/* =====================================================
-        SUMMARY PANEL
-        ===================================================== */}
+      {isLoading && (
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
+          Loading real guest bookings from Supabase...
+        </div>
+      )}
 
-    <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
+      {/* =====================================================
+          SUMMARY PANEL
+          ===================================================== */}
+
+      <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-sm">
         <div className="relative p-4 sm:p-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.14),transparent_35%)]" />
           <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] [background-size:34px_34px]" />
@@ -368,10 +697,21 @@ const summary = useMemo(() => {
               </h2>
             </div>
 
-            <p className="hidden max-w-xl text-sm leading-6 text-slate-300 sm:block">
-              Monitor paid guest bookings, temporary plate access, payment
-              status, and ANPR entry activity.
-            </p>
+            <div className="flex flex-col gap-3 sm:items-end">
+              <p className="hidden max-w-xl text-sm leading-6 text-slate-300 sm:block">
+                Monitor paid guest bookings, temporary plate access, payment
+                status, email notification, and ANPR entry activity.
+              </p>
+
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-300"
+              >
+                <Plus className="h-4 w-4" />
+                Add Guest Booking
+              </button>
+            </div>
           </div>
 
           <div className="relative z-10 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -421,52 +761,52 @@ const summary = useMemo(() => {
       </section>
 
       {/* =====================================================
-              MONTH FILTER PANEL
+          MONTH FILTER PANEL
           ===================================================== */}
 
-          <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                  Guest Booking Month
-                </p>
+      <section className="rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              Guest Booking Month
+            </p>
 
-                <h3 className="mt-2 text-xl font-black text-slate-950">
-                  {formatSelectedMonthLabel(selectedMonth)}
-                </h3>
+            <h3 className="mt-2 text-xl font-black text-slate-950">
+              {formatSelectedMonthLabel(selectedMonth)}
+            </h3>
 
-                <p className="mt-1 text-sm font-semibold text-slate-500">
-                  Guest bookings, ANPR access, entry status, and guest revenue are filtered
-                  by selected month.
-                </p>
-              </div>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Guest bookings, ANPR access, entry status, and guest revenue are
+              filtered by selected month.
+            </p>
+          </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            />
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedMonth(getCurrentMonthValue())}
-                  className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
-                >
-                  This Month
-                </button>
+            <button
+              type="button"
+              onClick={() => setSelectedMonth(getCurrentMonthValue())}
+              className="h-[52px] rounded-2xl border border-cyan-200 bg-cyan-50 px-5 text-sm font-black text-cyan-700 transition hover:bg-cyan-100"
+            >
+              This Month
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedMonth("")}
-                  className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
-                >
-                  All Months
-                </button>
-              </div>
-            </div>
-          </section>
+            <button
+              type="button"
+              onClick={() => setSelectedMonth("")}
+              className="h-[52px] rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+            >
+              All Months
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* =====================================================
           RULE PANEL
@@ -493,9 +833,7 @@ const summary = useMemo(() => {
             <Receipt className="h-5 w-5" />
           </div>
 
-          <h3 className="text-lg font-black text-slate-950">
-            Guest Revenue
-          </h3>
+          <h3 className="text-lg font-black text-slate-950">Guest Revenue</h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
             Guest pays parking fee only through the guest web portal. Guest does
@@ -513,7 +851,7 @@ const summary = useMemo(() => {
           ===================================================== */}
 
       <section className="rounded-[2rem] border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
-        <div className="grid gap-4 xl:grid-cols-[1.4fr_0.75fr_0.75fr_0.75fr_0.75fr_auto] xl:items-end">
+        <div className="grid gap-4 xl:grid-cols-[1.4fr_0.75fr_0.75fr_0.75fr_0.75fr_auto_auto] xl:items-end">
           <div>
             <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Search
@@ -522,7 +860,7 @@ const summary = useMemo(() => {
             <SearchInput
               value={searchTerm}
               onChange={setSearchTerm}
-              placeholder="Search guest, plate, email, phone, purpose..."
+              placeholder="Search guest, plate, email, phone, payment ref..."
             />
           </div>
 
@@ -561,6 +899,15 @@ const summary = useMemo(() => {
           >
             Reset
           </button>
+
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </button>
         </div>
       </section>
 
@@ -576,17 +923,18 @@ const summary = useMemo(() => {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Showing {filteredBookings.length} of {monthlyBookingData.length} guest bookings.
+              Showing {filteredBookings.length} of {monthlyBookingData.length}{" "}
+              guest bookings.
             </p>
           </div>
 
           <span className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700">
-            No Approval Required
+            Email Flow Connected
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1150px] border-collapse">
+          <table className="w-full min-w-[1180px] border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-100/80 text-left">
                 <TableHead>Guest</TableHead>
@@ -626,8 +974,8 @@ const summary = useMemo(() => {
 
                     <p className="mt-1 text-xs font-semibold text-slate-400">
                       {booking.bayNumber
-                      ? `${booking.bayNumber} • ${booking.zone}`
-                      : booking.parkingAllocation}
+                        ? `${booking.bayNumber} • ${booking.zone}`
+                        : booking.parkingAllocation}
                     </p>
                   </td>
 
@@ -650,6 +998,10 @@ const summary = useMemo(() => {
                       RM {booking.parkingFee.toFixed(2)}
                     </p>
 
+                    <p className="mt-1 max-w-[180px] truncate text-xs font-semibold text-slate-400">
+                      {booking.paymentReference || "-"}
+                    </p>
+
                     <div className="mt-2 flex flex-wrap gap-2">
                       <StatusBadge status={booking.paymentStatus} />
                       <StatusBadge status={booking.receiptStatus} />
@@ -666,22 +1018,43 @@ const summary = useMemo(() => {
                   <td className="px-6 py-4">
                     <StatusBadge status={booking.bookingStatus} />
 
-                    {booking.bookingStatus === "Expired" && booking.expiredReason !== "-" && (
-                      <p className="mt-2 text-xs font-bold text-orange-600">
-                        {booking.expiredReason}
-                      </p>
-                    )}
+                    {booking.bookingStatus === "Expired" &&
+                      booking.expiredReason !== "-" && (
+                        <p className="mt-2 text-xs font-bold text-orange-600">
+                          {booking.expiredReason}
+                        </p>
+                      )}
                   </td>
 
                   <td className="px-6 py-4">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedBooking(booking)}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                      Details
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openDetailsModal(booking)}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                        Details
+                      </button>
+
+                      <select
+                        defaultValue=""
+                        onChange={(event) => {
+                          handleTableAction(booking, event.target.value)
+                          event.target.value = ""
+                        }}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-black text-slate-600 outline-none transition hover:bg-white focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                        aria-label="Guest booking actions"
+                      >
+                        <option value="" disabled>
+                          Action
+                        </option>
+                        <option value="details">View / Edit</option>
+                        <option value="resend">Resend Email</option>
+                        <option value="cancel">Cancel + Email</option>
+                        <option value="delete">Delete</option>
+                      </select>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -699,14 +1072,26 @@ const summary = useMemo(() => {
           ===================================================== */}
 
       <section className="space-y-4 lg:hidden">
-        <div>
-          <h2 className="text-lg font-black text-slate-950">
-            Guest Booking List
-          </h2>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">
+              Guest Booking List
+            </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Showing {filteredBookings.length} of {monthlyBookingData.length} guest bookings.
-          </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Showing {filteredBookings.length} of {monthlyBookingData.length}{" "}
+              guest bookings.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </button>
         </div>
 
         {filteredBookings.map((booking) => (
@@ -725,14 +1110,15 @@ const summary = useMemo(() => {
                 </p>
               </div>
 
-               <div className="text-right">
+              <div className="text-right">
                 <StatusBadge status={booking.bookingStatus} />
 
-                {booking.bookingStatus === "Expired" && booking.expiredReason !== "-" && (
-                  <p className="mt-2 text-xs font-bold text-orange-600">
-                    {booking.expiredReason}
-                  </p>
-                )}
+                {booking.bookingStatus === "Expired" &&
+                  booking.expiredReason !== "-" && (
+                    <p className="mt-2 text-xs font-bold text-orange-600">
+                      {booking.expiredReason}
+                    </p>
+                  )}
               </div>
             </div>
 
@@ -744,10 +1130,12 @@ const summary = useMemo(() => {
 
             <div className="mt-5 grid gap-3">
               <MobileInfo label="Vehicle" value={booking.vehiclePlate} />
+
               <MobileInfo
                 label="Schedule"
                 value={`${booking.bookingDate}, ${booking.startTime} - ${booking.endTime}`}
               />
+
               <MobileInfo
                 label="Bay"
                 value={
@@ -756,21 +1144,50 @@ const summary = useMemo(() => {
                     : booking.parkingAllocation
                 }
               />
+
               <MobileInfo
                 label="Parking Fee"
-                value={`RM ${booking.parkingFee.toFixed(2)} • ${booking.paymentMethod}`}
+                value={`RM ${booking.parkingFee.toFixed(2)} • ${
+                  booking.paymentMethod
+                }`}
               />
+
+              <MobileInfo
+                label="Payment Ref"
+                value={booking.paymentReference || "-"}
+              />
+
               <MobileInfo label="Visit Purpose" value={booking.visitPurpose} />
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedBooking(booking)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-              View Details
-            </button>
+            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <button
+                type="button"
+                onClick={() => openDetailsModal(booking)}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                View Details
+              </button>
+
+              <select
+                defaultValue=""
+                onChange={(event) => {
+                  handleTableAction(booking, event.target.value)
+                  event.target.value = ""
+                }}
+                className="h-[48px] rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-600 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                aria-label="Guest booking actions"
+              >
+                <option value="" disabled>
+                  Action
+                </option>
+                <option value="details">View / Edit</option>
+                <option value="resend">Resend Email</option>
+                <option value="cancel">Cancel + Email</option>
+                <option value="delete">Delete</option>
+              </select>
+            </div>
           </div>
         ))}
 
@@ -785,10 +1202,18 @@ const summary = useMemo(() => {
 
       <GuestBookingModal
         booking={selectedBooking}
-        isOpen={Boolean(selectedBooking)}
-        onClose={() => setSelectedBooking(null)}
+        isOpen={isModalOpen}
+        mode={modalMode}
+        onClose={closeModal}
+        onCreateBooking={handleCreateBooking}
+        onSaveBooking={handleSaveBooking}
         onUpdateBookingStatus={handleUpdateBookingStatus}
+        onUpdatePaymentStatus={handleUpdatePaymentStatus}
         onUpdateAnprAccess={handleUpdateAnprAccess}
+        onUpdateEntryStatus={handleUpdateEntryStatus}
+        onResendEmail={handleResendEmail}
+        onCancelBooking={handleCancelBooking}
+        onDeleteBooking={handleDeleteBooking}
       />
     </div>
   )
@@ -839,7 +1264,9 @@ function MobileInfo({ label, value }) {
         {label}
       </p>
 
-      <p className="break-words text-sm font-black text-slate-700">{value}</p>
+      <p className="break-words text-sm font-black text-slate-700">
+        {value || "-"}
+      </p>
     </div>
   )
 }
