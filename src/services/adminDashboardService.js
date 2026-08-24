@@ -64,13 +64,6 @@ async function getCount(tableName, filters = []) {
 // GET TODAY START
 // =====================================================
 
-function getTodayStartIso() {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  return today.toISOString()
-}
-
 // =====================================================
 // NORMALIZE TEXT VALUE
 // =====================================================
@@ -274,7 +267,7 @@ async function getTodayRevenue() {
 async function refreshDashboardMaintenanceStatuses() {
   const maintenanceJobs = [
     supabase.rpc("expire_guest_bookings"),
-    supabase.rpc("update_reservation_statuses"),
+    // Reservation lifecycle is maintained by pg_cron.
   ]
 
   const results = await Promise.allSettled(maintenanceJobs)

@@ -162,12 +162,19 @@ function GuestBookings() {
     }
   }
 
+  // PARKUTEM_PHASE_06F_R1_GUEST_PAGE_EFFECT
+  // Initial loading is deferred one event-loop tick to avoid synchronous
+  // setState calls inside the React effect body.
   // =====================================================
   // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
-    loadGuestBookings()
+    const initialLoadTimer = window.setTimeout(() => {
+      void loadGuestBookings()
+    }, 0)
+
+    return () => window.clearTimeout(initialLoadTimer)
   }, [])
 
   // =====================================================
@@ -974,7 +981,7 @@ function GuestBookings() {
 
                     <p className="mt-1 text-xs font-semibold text-slate-400">
                       {booking.bayNumber
-                        ? `${booking.bayNumber} • ${booking.zone}`
+                        ? `${booking.bayNumber} â€¢ ${booking.zone}`
                         : booking.parkingAllocation}
                     </p>
                   </td>
@@ -1140,14 +1147,14 @@ function GuestBookings() {
                 label="Bay"
                 value={
                   booking.bayNumber
-                    ? `${booking.bayNumber} • ${booking.zone}`
+                    ? `${booking.bayNumber} â€¢ ${booking.zone}`
                     : booking.parkingAllocation
                 }
               />
 
               <MobileInfo
                 label="Parking Fee"
-                value={`RM ${booking.parkingFee.toFixed(2)} • ${
+                value={`RM ${booking.parkingFee.toFixed(2)} â€¢ ${
                   booking.paymentMethod
                 }`}
               />

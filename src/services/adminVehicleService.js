@@ -39,15 +39,6 @@ function mapUserType(type) {
   return typeMap[type] || "Student"
 }
 
-function mapUserTypeToDatabase(type) {
-  const typeMap = {
-    Student: "student",
-    Staff: "staff",
-  }
-
-  return typeMap[type] || "student"
-}
-
 function mapStickerStatus(status) {
   const statusMap = {
     active: "Active",
@@ -93,36 +84,58 @@ function mapAnprStatusToDatabase(status) {
 // =====================================================
 
 export async function fetchVehicleRecords() {
-  const { data, error } = await supabase
-    .from("vehicle_records")
-    .select(
-      `
-      id,
-      plate_number,
-      normalized_plate_number,
-      vehicle_model,
-      vehicle_color,
-      owner_name,
-      university_id,
-      user_type,
-      faculty,
-      sticker_status,
-      anpr_access_status,
-      registered_at,
-      expiry_at,
-      remarks,
-      created_at,
-      updated_at
-    `
-    )
-    .order("created_at", { ascending: false })
+  // PARKUTEM_PHASE_04B_VEHICLE_RANGE_BATCH
+  // Retrieve the full registry in bounded ranges instead of relying on
+  // a single Supabase response that can be capped at 1000 rows.
+  const batchSize = 500
+  const allVehicles = []
 
-  if (error) {
-    console.error("Fetch vehicle records error:", error)
-    throw new Error(error.message || "Failed to fetch vehicle records.")
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("vehicle_records")
+      .select(
+        `
+        id,
+        plate_number,
+        normalized_plate_number,
+        vehicle_model,
+        vehicle_color,
+        owner_name,
+        university_id,
+        user_type,
+        faculty,
+        sticker_status,
+        anpr_access_status,
+        registered_at,
+        expiry_at,
+        remarks,
+        created_at,
+        updated_at
+      `
+      )
+      .order("created_at", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch vehicle records error:", error)
+
+      throw new Error(
+        error.message || "Failed to fetch vehicle records."
+      )
+    }
+
+    const rows = Array.isArray(data) ? data : []
+
+    allVehicles.push(...rows)
+
+    if (rows.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allVehicles
 }
 
 // =====================================================

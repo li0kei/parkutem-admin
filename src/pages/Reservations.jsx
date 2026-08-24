@@ -10,14 +10,12 @@ import {
   CheckCircle,
   Clock3,
   CreditCard,
-  Edit3,
   MapPin,
   MoreHorizontal,
   Moon,
   Plus,
   Save,
   Timer,
-  Trash2,
   User,
   Wallet,
   X,
@@ -273,12 +271,18 @@ function Reservations() {
     }
   }
 
+  // PARKUTEM_PHASE_06G_R1_RESERVATIONS_PAGE_LINT
+  // Initial Supabase loading is deferred one event-loop tick.
   // =====================================================
   // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
-    loadReservations()
+    const initialLoadTimer = window.setTimeout(() => {
+      void loadReservations()
+    }, 0)
+
+    return () => window.clearTimeout(initialLoadTimer)
   }, [])
 
   // =====================================================
@@ -1040,12 +1044,12 @@ function Reservations() {
             <div className="mt-5 grid gap-3">
               <MobileInfo
                 label="Vehicle"
-                value={`${reservation.vehiclePlate} • ${reservation.userType}`}
+                value={`${reservation.vehiclePlate} - ${reservation.userType}`}
               />
 
               <MobileInfo
                 label="Bay"
-                value={`${reservation.bayNumber} • ${reservation.zone}`}
+                value={`${reservation.bayNumber} - ${reservation.zone}`}
               />
 
               <MobileInfo
@@ -1145,17 +1149,21 @@ function ReservationFormModal({
 
   useEffect(() => {
     if (!isOpen) {
-      return
+      return undefined
     }
 
-    setLocalError("")
+    const formResetTimer = window.setTimeout(() => {
+      setLocalError("")
 
-    if (mode === "edit" && reservation) {
-      setForm(createEditReservationForm(reservation))
-      return
-    }
+      if (mode === "edit" && reservation) {
+        setForm(createEditReservationForm(reservation))
+        return
+      }
 
-    setForm(createDefaultReservationForm())
+      setForm(createDefaultReservationForm())
+    }, 0)
+
+    return () => window.clearTimeout(formResetTimer)
   }, [isOpen, mode, reservation])
 
   const selectedUser = useMemo(() => {
@@ -1335,7 +1343,7 @@ function ReservationFormModal({
                     disabled={isSaving || isLoadingOptions}
                     options={(options.users || []).map((user) => ({
                       value: user.id,
-                      label: `${user.fullName} • ${user.universityId} • ${user.userType}`,
+                      label: `${user.fullName} - ${user.universityId} - ${user.userType}`,
                     }))}
                     placeholder="Select user"
                   />
@@ -1353,7 +1361,7 @@ function ReservationFormModal({
                     }
                     options={filteredVehicles.map((vehicle) => ({
                       value: vehicle.id,
-                      label: `${vehicle.plateNumber} • ${
+                      label: `${vehicle.plateNumber} - ${
                         vehicle.vehicleModel || "Vehicle"
                       }`,
                     }))}
@@ -1372,7 +1380,7 @@ function ReservationFormModal({
                     disabled={isSaving || isLoadingOptions}
                     options={(options.parkingBays || []).map((bay) => ({
                       value: bay.id,
-                      label: `${bay.bayCode} • ${bay.zoneName || "Zone"} • ${
+                      label: `${bay.bayCode} - ${bay.zoneName || "Zone"} - ${
                         bay.status
                       }`,
                     }))}
@@ -1510,7 +1518,7 @@ function ReservationFormModal({
                       label="User"
                       value={
                         selectedUser
-                          ? `${selectedUser.fullName} • ${selectedUser.universityId}`
+                          ? `${selectedUser.fullName} - ${selectedUser.universityId}`
                           : "Not selected"
                       }
                     />
@@ -1519,7 +1527,7 @@ function ReservationFormModal({
                       label="Vehicle"
                       value={
                         selectedVehicle
-                          ? `${selectedVehicle.plateNumber} • ${
+                          ? `${selectedVehicle.plateNumber} - ${
                               selectedVehicle.vehicleModel || "Vehicle"
                             }`
                           : "Not selected"
@@ -1530,9 +1538,9 @@ function ReservationFormModal({
                       label="Bay"
                       value={
                         selectedBay
-                          ? `${selectedBay.bayCode} • ${
+                          ? `${selectedBay.bayCode} - ${
                               selectedBay.zoneName || "Zone"
-                            } • ${selectedBay.status}`
+                            } - ${selectedBay.status}`
                           : "Not selected"
                       }
                     />

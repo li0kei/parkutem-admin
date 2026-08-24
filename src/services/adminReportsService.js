@@ -119,17 +119,6 @@ function formatTimeAgo(value) {
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-function createWeekBuckets() {
-  return {
-    Mon: 0,
-    Tue: 0,
-    Wed: 0,
-    Thu: 0,
-    Fri: 0,
-    Sat: 0,
-    Sun: 0,
-  }
-}
 
 function getDayLabel(value) {
   const date = new Date(value)
@@ -225,6 +214,107 @@ function createTrafficMonthData(anprLogs) {
   return Object.values(buckets)
 }
 
+function normalizeReportPaymentType(value) {
+  return String(value || "").trim().toLowerCase()
+}
+
+function getPaymentEventAt(payment) {
+  return payment?.paid_at || payment?.created_at || null
+}
+
+function isGuestRevenueType(type) {
+  return ["guest_parking", "guest_parking_fee", "guest"].includes(
+    normalizeReportPaymentType(type)
+  )
+}
+
+function isReservationRevenueType(type) {
+  return ["reservation_fee", "reservation"].includes(
+    normalizeReportPaymentType(type)
+  )
+}
+
+function isAfter7RevenueType(type) {
+  return ["parking_fee", "after_7_parking_fee", "after_7"].includes(
+    normalizeReportPaymentType(type)
+  )
+}
+
+function isReservationRelatedPayment(type) {
+  return isReservationRevenueType(type) || isAfter7RevenueType(type)
+}
+
+function summarizeReportRevenue(payments = [], reservations = []) {
+  let reservation = 0
+  let parking = 0
+  let guest = 0
+  let refund = 0
+
+  const reservationIdsWithTransactions = new Set()
+
+  payments.forEach((payment) => {
+    const type = normalizeReportPaymentType(payment.payment_type)
+    const amount = Number(payment.amount || 0)
+
+    if (
+      payment.reservation_id &&
+      isReservationRelatedPayment(type)
+    ) {
+      reservationIdsWithTransactions.add(payment.reservation_id)
+    }
+
+    if (
+      payment.payment_status === "refunded" ||
+      type === "refund"
+    ) {
+      refund += Math.abs(amount)
+      return
+    }
+
+    if (payment.payment_status !== "paid") {
+      return
+    }
+
+    if (isGuestRevenueType(type)) {
+      guest += amount
+      return
+    }
+
+    if (isReservationRevenueType(type)) {
+      reservation += amount
+      return
+    }
+
+    if (isAfter7RevenueType(type)) {
+      parking += amount
+    }
+
+    // wallet_topup / wallet_top_up / topup intentionally excluded.
+  })
+
+  reservations.forEach((reservationRow) => {
+    if (
+      reservationIdsWithTransactions.has(reservationRow.id) ||
+      reservationRow.status === "cancelled"
+    ) {
+      return
+    }
+
+    reservation += Number(reservationRow.reservation_fee || 0)
+    parking += Number(reservationRow.after_7_parking_fee || 0)
+  })
+
+  const totalRevenue = reservation + parking + guest
+
+  return {
+    reservation: Number(reservation.toFixed(2)),
+    parking: Number(parking.toFixed(2)),
+    guest: Number(guest.toFixed(2)),
+    refund: Number(refund.toFixed(2)),
+    totalRevenue: Number(totalRevenue.toFixed(2)),
+  }
+}
+
 function createRevenueTrendData(payments, reservations) {
   const buckets = {
     Mon: { label: "Mon", reservation: 0, parking: 0, guest: 0, refund: 0 },
@@ -236,16 +326,27 @@ function createRevenueTrendData(payments, reservations) {
     Sun: { label: "Sun", reservation: 0, parking: 0, guest: 0, refund: 0 },
   }
 
+  const reservationIdsWithTransactions = new Set(
+    payments
+      .filter((payment) => isReservationRelatedPayment(payment.payment_type))
+      .map((payment) => payment.reservation_id)
+      .filter(Boolean)
+  )
+
   payments.forEach((payment) => {
-    const label = getDayLabel(payment.created_at || payment.paid_at)
+    const label = getDayLabel(getPaymentEventAt(payment))
 
     if (!label || !buckets[label]) {
       return
     }
 
+    const type = normalizeReportPaymentType(payment.payment_type)
     const amount = Number(payment.amount || 0)
 
-    if (payment.payment_status === "refunded" || payment.payment_type === "refund") {
+    if (
+      payment.payment_status === "refunded" ||
+      type === "refund"
+    ) {
       buckets[label].refund += Math.abs(amount)
       return
     }
@@ -254,30 +355,42 @@ function createRevenueTrendData(payments, reservations) {
       return
     }
 
-    if (payment.payment_type === "guest_parking") {
+    if (isGuestRevenueType(type)) {
       buckets[label].guest += amount
       return
     }
 
-    if (payment.payment_type === "reservation_fee") {
+    if (isReservationRevenueType(type)) {
       buckets[label].reservation += amount
       return
     }
 
-    if (payment.payment_type === "parking_fee") {
+    if (isAfter7RevenueType(type)) {
       buckets[label].parking += amount
     }
   })
 
-  reservations.forEach((reservation) => {
-    const label = getDayLabel(reservation.created_at)
+  reservations.forEach((reservationRow) => {
+    if (
+      reservationIdsWithTransactions.has(reservationRow.id) ||
+      reservationRow.status === "cancelled"
+    ) {
+      return
+    }
+
+    const label = getDayLabel(reservationRow.created_at)
 
     if (!label || !buckets[label]) {
       return
     }
 
-    buckets[label].reservation += Number(reservation.reservation_fee || 0)
-    buckets[label].parking += Number(reservation.after_7_parking_fee || 0)
+    buckets[label].reservation += Number(
+      reservationRow.reservation_fee || 0
+    )
+
+    buckets[label].parking += Number(
+      reservationRow.after_7_parking_fee || 0
+    )
   })
 
   return Object.values(buckets).map((item) => ({
@@ -290,29 +403,35 @@ function createRevenueTrendData(payments, reservations) {
 }
 
 function createZoneOccupancyData(parkingBays) {
-  const zoneMap = {
-    "Zone A": { zone: "Zone A", occupied: 0, available: 0 },
-    "Zone B": { zone: "Zone B", occupied: 0, available: 0 },
-    "Zone C": { zone: "Zone C", occupied: 0, available: 0 },
-    "Zone D": { zone: "Zone D", occupied: 0, available: 0 },
-  }
+  const zoneMap = new Map()
 
   parkingBays.forEach((bay) => {
-    const zoneName = bay.parking_zones?.zone_name || "Zone A"
+    const zoneName =
+      bay.parking_zones?.zone_name ||
+      bay.parking_zones?.zone_code ||
+      "Unassigned"
 
-    if (!zoneMap[zoneName]) {
-      return
+    if (!zoneMap.has(zoneName)) {
+      zoneMap.set(zoneName, {
+        zone: zoneName,
+        occupied: 0,
+        available: 0,
+      })
     }
+
+    const zone = zoneMap.get(zoneName)
 
     if (bay.status === "available") {
-      zoneMap[zoneName].available += 1
+      zone.available += 1
       return
     }
 
-    zoneMap[zoneName].occupied += 1
+    zone.occupied += 1
   })
 
-  return Object.values(zoneMap)
+  return [...zoneMap.values()].sort((a, b) =>
+    a.zone.localeCompare(b.zone)
+  )
 }
 
 function createAnprDetectionData(anprLogs) {
@@ -760,85 +879,132 @@ export const emptyReportsData = {
 // =====================================================
 
 async function fetchReportTables() {
+  // PARKUTEM_PHASE_06E_R1_REPORT_DATA_CORRECTNESS
+  const REPORT_FETCH_BATCH_SIZE = 500
+
+  async function fetchAllReportRows({
+    table,
+    selectClause = "*",
+    orderColumn,
+    ascending = false,
+  }) {
+    const allRows = []
+
+    for (let from = 0; ; from += REPORT_FETCH_BATCH_SIZE) {
+      const to = from + REPORT_FETCH_BATCH_SIZE - 1
+
+      const { data, error } = await supabase
+        .from(table)
+        .select(selectClause)
+        .order(orderColumn, { ascending })
+        .range(from, to)
+
+      if (error) {
+        throw new Error(
+          `Failed to fetch report data from ${table}: ${error.message}`
+        )
+      }
+
+      const batch = data || []
+      allRows.push(...batch)
+
+      if (batch.length < REPORT_FETCH_BATCH_SIZE) {
+        break
+      }
+    }
+
+    return allRows
+  }
+
   const [
-    guestBookingsResult,
-    paymentsResult,
-    reservationsResult,
-    anprLogsResult,
-    parkingBaysResult,
-    vehicleRecordsResult,
-    universityUsersResult,
-    issuesResult,
+    guestBookings,
+    payments,
+    reservations,
+    anprLogs,
+    parkingBays,
+    vehicleRecords,
+    universityUsers,
+    issues,
   ] = await Promise.all([
-    supabase.from("guest_bookings").select("*").order("created_at", {
-      ascending: false,
+    fetchAllReportRows({
+      table: "guest_bookings",
+      orderColumn: "created_at",
     }),
 
-    supabase.from("payment_transactions").select("*").order("created_at", {
-      ascending: false,
+    fetchAllReportRows({
+      table: "payment_transactions",
+      selectClause: `
+        id,
+        guest_booking_id,
+        reservation_id,
+        parking_session_id,
+        payment_type,
+        amount,
+        payment_method,
+        payment_status,
+        transaction_reference,
+        payment_provider,
+        provider_bill_id,
+        provider_reference,
+        provider_status,
+        provider_reason,
+        provider_updated_at,
+        paid_at,
+        created_at,
+        updated_at
+      `,
+      orderColumn: "created_at",
     }),
 
-    supabase.from("reservations").select("*").order("created_at", {
-      ascending: false,
+    fetchAllReportRows({
+      table: "reservations",
+      orderColumn: "created_at",
     }),
 
-    supabase.from("anpr_logs").select("*").order("detected_at", {
-      ascending: false,
+    fetchAllReportRows({
+      table: "anpr_logs",
+      orderColumn: "detected_at",
     }),
 
-    supabase
-      .from("parking_bays")
-      .select(
-        `
+    fetchAllReportRows({
+      table: "parking_bays",
+      selectClause: `
         *,
         parking_zones (
           zone_code,
           zone_name,
           location_name
         )
-      `
-      )
-      .order("bay_code", { ascending: true }),
-
-    supabase.from("vehicle_records").select("*").order("created_at", {
-      ascending: false,
+      `,
+      orderColumn: "bay_code",
+      ascending: true,
     }),
 
-    supabase.from("university_users").select("*").order("created_at", {
-      ascending: false,
+    fetchAllReportRows({
+      table: "vehicle_records",
+      orderColumn: "created_at",
     }),
 
-    supabase.from("support_issues").select("*").order("created_at", {
-      ascending: false,
+    fetchAllReportRows({
+      table: "university_users",
+      orderColumn: "created_at",
+    }),
+
+    fetchAllReportRows({
+      table: "support_issues",
+      orderColumn: "created_at",
     }),
   ])
 
-  const results = [
-    guestBookingsResult,
-    paymentsResult,
-    reservationsResult,
-    anprLogsResult,
-    parkingBaysResult,
-    vehicleRecordsResult,
-    universityUsersResult,
-    issuesResult,
-  ]
-
-  const failedResult = results.find((result) => result.error)
-
-  if (failedResult) {
-    throw new Error(failedResult.error.message)
-  }
-
   return {
-    guestBookings: guestBookingsResult.data || [],
-    payments: paymentsResult.data || [],
-    reservations: reservationsResult.data || [],
-    anprLogs: anprLogsResult.data || [],
-    parkingBays: parkingBaysResult.data || [],
-    vehicleRecords: vehicleRecordsResult.data || [],
-    universityUsers: universityUsersResult.data || [],
-    issues: issuesResult.data || [],
+    guestBookings,
+    payments,
+    reservations,
+    anprLogs,
+    parkingBays,
+    vehicleRecords,
+    universityUsers,
+    issues,
   }
 }
 
@@ -859,7 +1025,7 @@ function buildReportsData(rawData, filters) {
   )
 
   const rangePayments = rawData.payments.filter((item) =>
-    isWithinRange(item.created_at, startIso, endIso)
+    isWithinRange(getPaymentEventAt(item), startIso, endIso)
   )
 
   const rangeReservations = rawData.reservations.filter((item) =>
@@ -874,19 +1040,12 @@ function buildReportsData(rawData, filters) {
     isWithinRange(item.created_at, startIso, endIso)
   )
 
-  const paidPayments = rangePayments.filter(
-    (item) => item.payment_status === "paid"
+  const revenueSummary = summarizeReportRevenue(
+    rangePayments,
+    rangeReservations
   )
 
-  const totalRevenue =
-    paidPayments.reduce((total, item) => total + Number(item.amount || 0), 0) +
-    rangeReservations.reduce(
-      (total, item) =>
-        total +
-        Number(item.reservation_fee || 0) +
-        Number(item.after_7_parking_fee || 0),
-      0
-    )
+  const totalRevenue = revenueSummary.totalRevenue
 
   const totalBays = rawData.parkingBays.length
   const unavailableBays = rawData.parkingBays.filter(
@@ -915,45 +1074,28 @@ function buildReportsData(rawData, filters) {
     flaggedDetections: rangeAnprLogs.filter(
       (log) => log.access_status === "flagged"
     ).length,
-    activeIssues: rawData.issues.filter((issue) => issue.status !== "resolved")
+    activeIssues: rangeIssues.filter((issue) => issue.status !== "resolved")
       .length,
   }
 
   const revenueBreakdownReportData = [
     {
       name: "Reservation Fee",
-      value: rangeReservations.reduce(
-        (total, item) => total + Number(item.reservation_fee || 0),
-        0
-      ),
+      value: revenueSummary.reservation,
     },
     {
       name: "After 7PM Parking Fee",
-      value: rangeReservations.reduce(
-        (total, item) => total + Number(item.after_7_parking_fee || 0),
-        0
-      ),
+      value: revenueSummary.parking,
     },
     {
       name: "Guest Parking Fee",
-      value: paidPayments
-        .filter((payment) => payment.payment_type === "guest_parking")
-        .reduce((total, item) => total + Number(item.amount || 0), 0),
+      value: revenueSummary.guest,
     },
     {
       name: "Refund",
-      value: rangePayments
-        .filter(
-          (payment) =>
-            payment.payment_status === "refunded" ||
-            payment.payment_type === "refund"
-        )
-        .reduce((total, item) => total + Math.abs(Number(item.amount || 0)), 0),
+      value: revenueSummary.refund,
     },
-  ].map((item) => ({
-    ...item,
-    value: Number(item.value.toFixed(2)),
-  }))
+  ]
 
   const monthlyGuestBookings = rawData.guestBookings.filter((item) =>
     isWithinHalfOpenRange(item.created_at, monthRange.startIso, monthRange.endIso)
@@ -964,7 +1106,11 @@ function buildReportsData(rawData, filters) {
   )
 
   const monthlyPayments = rawData.payments.filter((item) =>
-    isWithinHalfOpenRange(item.created_at, monthRange.startIso, monthRange.endIso)
+    isWithinHalfOpenRange(
+      getPaymentEventAt(item),
+      monthRange.startIso,
+      monthRange.endIso
+    )
   )
 
   const monthlyAnprLogs = rawData.anprLogs.filter((item) =>
@@ -984,7 +1130,11 @@ function buildReportsData(rawData, filters) {
   )
 
   const comparePayments = rawData.payments.filter((item) =>
-    isWithinHalfOpenRange(item.created_at, compareRange.startIso, compareRange.endIso)
+    isWithinHalfOpenRange(
+      getPaymentEventAt(item),
+      compareRange.startIso,
+      compareRange.endIso
+    )
   )
 
   const compareAnprLogs = rawData.anprLogs.filter((item) =>
@@ -998,16 +1148,10 @@ function buildReportsData(rawData, filters) {
     anprLogs,
     issues,
   }) {
-    const paid = payments.filter((item) => item.payment_status === "paid")
-    const revenue =
-      paid.reduce((total, item) => total + Number(item.amount || 0), 0) +
-      reservations.reduce(
-        (total, item) =>
-          total +
-          Number(item.reservation_fee || 0) +
-          Number(item.after_7_parking_fee || 0),
-        0
-      )
+    const revenueSummary = summarizeReportRevenue(
+      payments,
+      reservations
+    )
 
     const approved = anprLogs.filter(
       (item) => item.access_status === "approved"
@@ -1016,7 +1160,7 @@ function buildReportsData(rawData, filters) {
     return {
       totalVehicles: anprLogs.length,
       averageOccupancy,
-      totalRevenue: Number(revenue.toFixed(2)),
+      totalRevenue: revenueSummary.totalRevenue,
       reservations: reservations.length,
       guestBookings: guestBookings.length,
       anprAccuracy:

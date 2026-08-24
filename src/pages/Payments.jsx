@@ -26,10 +26,7 @@ import {
   paymentUserTypeOptions,
 } from "../data/payments"
 
-import {
-  loadAdminPayments,
-  updatePaymentTransactionStatus,
-} from "../services/adminPaymentService"
+import { loadAdminPayments } from "../services/adminPaymentService"
 
 
 // =====================================================
@@ -145,7 +142,13 @@ async function loadPayments({ silent = false } = {}) {
 // =====================================================
 
 useEffect(() => {
-  loadPayments()
+  const initialLoadTimer = window.setTimeout(() => {
+    void loadPayments()
+  }, 0)
+
+  return () => {
+    window.clearTimeout(initialLoadTimer)
+  }
 }, [])
 
 // =====================================================
@@ -191,7 +194,10 @@ const monthlyPaymentData = useMemo(() => {
         payment.reference.toLowerCase().includes(searchValue) ||
         payment.vehiclePlate.toLowerCase().includes(searchValue) ||
         payment.type.toLowerCase().includes(searchValue) ||
-        payment.source.toLowerCase().includes(searchValue)
+        payment.source.toLowerCase().includes(searchValue) ||
+        payment.paymentProvider.toLowerCase().includes(searchValue) ||
+        payment.providerBillId.toLowerCase().includes(searchValue) ||
+        payment.providerReference.toLowerCase().includes(searchValue)
 
       const matchesType =
         selectedType === "All Types" || payment.type === selectedType
@@ -272,57 +278,6 @@ const summary = useMemo(() => {
 }, [monthlyPaymentData])
 
 // =====================================================
-// UPDATE PAYMENT STATUS
-// Only real payment_transactions rows can be updated.
-// Reservation fallback rows are display-only.
-// =====================================================
-
-async function handleUpdateStatus(paymentId, newStatus) {
-  const currentPayment = paymentData.find((payment) => payment.id === paymentId)
-
-  if (!currentPayment) {
-    return
-  }
-
-  if (currentPayment.dataSource !== "payment_transactions") {
-    setLoadError(
-      "This payment is a reservation fallback row. It cannot be updated until reservation wallet deduction creates a real payment transaction."
-    )
-
-    return
-  }
-
-  setLoadError("")
-
-  try {
-    const updatedPayment = await updatePaymentTransactionStatus(
-      paymentId,
-      newStatus
-    )
-
-    setPaymentData((prev) =>
-      prev.map((payment) =>
-        payment.id === paymentId ? updatedPayment : payment
-      )
-    )
-
-    setSelectedPayment((prev) => {
-      if (!prev || prev.id !== paymentId) {
-        return prev
-      }
-
-      return updatedPayment
-    })
-  } catch (error) {
-    console.error("Failed to update payment status:", error)
-
-    setLoadError(
-      error.message || "Unable to update payment status in Supabase."
-    )
-  }
-}
-
-  // =====================================================
   // RESET FILTERS
   // =====================================================
 
@@ -618,7 +573,7 @@ async function handleUpdateStatus(paymentId, newStatus) {
                     </p>
 
                     <p className="mt-1 text-xs font-semibold text-slate-400">
-                      {payment.userType} • {payment.vehiclePlate}
+                      {payment.userType} Ã¢â‚¬Â¢ {payment.vehiclePlate}
                     </p>
                   </td>
 
@@ -714,7 +669,7 @@ async function handleUpdateStatus(paymentId, newStatus) {
 
             <div className="mt-5 grid gap-3">
               <MobileInfo label="Amount" value={`RM ${Math.abs(payment.amount).toFixed(2)}`} />
-              <MobileInfo label="User Type / Plate" value={`${payment.userType} • ${payment.vehiclePlate}`} />
+              <MobileInfo label="User Type / Plate" value={`${payment.userType} Ã¢â‚¬Â¢ ${payment.vehiclePlate}`} />
               <MobileInfo label="Reference" value={payment.reference} />
               <MobileInfo label="Date / Time" value={payment.dateTime} />
               <MobileInfo label="Source" value={payment.source} />
@@ -744,8 +699,7 @@ async function handleUpdateStatus(paymentId, newStatus) {
         payment={selectedPayment}
         isOpen={Boolean(selectedPayment)}
         onClose={() => setSelectedPayment(null)}
-        onUpdateStatus={handleUpdateStatus}
-      />
+/>
     </div>
   )
 }

@@ -4,6 +4,9 @@
 
 import { supabase } from "../lib/supabaseClient"
 
+// PARKUTEM_PHASE_06B_PAYMENT_BATCH_PAGINATION
+const PAYMENT_FETCH_BATCH_SIZE = 500
+
 // =====================================================
 // DATE FORMATTER
 // =====================================================
@@ -99,6 +102,62 @@ function mapPaymentStatus(status) {
 }
 
 // =====================================================
+// PAYMENT PROVIDER MAPPERS
+// =====================================================
+
+function mapPaymentProvider(provider) {
+  const cleanProvider = normalizeText(provider)
+
+  if (!cleanProvider) {
+    return "-"
+  }
+
+  const providerMap = {
+    billplz: "Billplz",
+  }
+
+  return (
+    providerMap[cleanProvider] ||
+    cleanProvider.charAt(0).toUpperCase() + cleanProvider.slice(1)
+  )
+}
+
+function mapProviderStatus(status) {
+  const cleanStatus = normalizeText(status)
+
+  if (!cleanStatus) {
+    return "-"
+  }
+
+  const statusMap = {
+    due: "Due",
+    paid: "Paid",
+    deleted: "Deleted",
+    failed: "Failed",
+    pending: "Pending",
+  }
+
+  return (
+    statusMap[cleanStatus] ||
+    cleanStatus
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  )
+}
+
+function mapProviderReason(reason) {
+  const cleanReason = String(reason || "").trim()
+
+  if (!cleanReason) {
+    return "-"
+  }
+
+  return cleanReason.replaceAll("_", " ")
+}
+
+// =====================================================
 // SOURCE MAPPER
 // =====================================================
 
@@ -152,88 +211,126 @@ function isReservationPaymentType(type) {
 // =====================================================
 // FETCH PAYMENT TRANSACTIONS
 // Source: payment_transactions
+// Fetches in 500-row ranges to avoid Supabase response row caps.
 // =====================================================
 
 export async function fetchPaymentTransactions() {
-  const { data, error } = await supabase
-    .from("payment_transactions")
-    .select(
-      `
-      id,
-      payer_user_id,
-      guest_booking_id,
-      reservation_id,
-      parking_session_id,
-      payment_type,
-      amount,
-      payment_method,
-      payment_status,
-      transaction_reference,
-      paid_at,
-      created_at,
-      guest_bookings (
-        booking_reference,
-        visitor_name,
-        email,
-        phone_number,
-        plate_number,
-        normalized_plate_number
-      )
-    `
-    )
-    .order("created_at", { ascending: false })
+  const allPayments = []
 
-  if (error) {
-    console.error("Fetch payment transactions error:", error)
-    throw new Error(error.message || "Failed to fetch payment transactions.")
+  for (let from = 0; ; from += PAYMENT_FETCH_BATCH_SIZE) {
+    const to = from + PAYMENT_FETCH_BATCH_SIZE - 1
+
+    const { data, error } = await supabase
+      .from("payment_transactions")
+      .select(
+        `
+        id,
+        payer_user_id,
+        guest_booking_id,
+        reservation_id,
+        parking_session_id,
+        payment_type,
+        amount,
+        payment_method,
+        payment_status,
+        transaction_reference,
+        payment_provider,
+        provider_bill_id,
+        provider_reference,
+        provider_status,
+        provider_reason,
+        provider_updated_at,
+        paid_at,
+        created_at,
+        updated_at,
+        guest_bookings (
+          booking_reference,
+          visitor_name,
+          email,
+          phone_number,
+          plate_number,
+          normalized_plate_number
+        )
+      `
+      )
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch payment transactions error:", error)
+      throw new Error(error.message || "Failed to fetch payment transactions.")
+    }
+
+    const batch = data || []
+    allPayments.push(...batch)
+
+    if (batch.length < PAYMENT_FETCH_BATCH_SIZE) {
+      break
+    }
   }
 
-  return data || []
+  return allPayments
 }
 
 // =====================================================
 // FETCH RESERVATION PAYMENT FALLBACKS
 // Source: reservations table
-// Temporary until reservation wallet deductions insert real rows
-// into payment_transactions.
+// Temporary until all reservation billing creates transaction rows.
+// Fetches in 500-row ranges to avoid Supabase response row caps.
 // =====================================================
 
 export async function fetchReservationPaymentFallbacks() {
-  const { data, error } = await supabase
-    .from("reservations")
-    .select(
-      `
-      id,
-      reservation_reference,
-      university_user_id,
-      vehicle_record_id,
-      bay_id,
-      university_id,
-      user_name,
-      user_type,
-      plate_number,
-      normalized_plate_number,
-      reservation_start_at,
-      reservation_end_at,
-      reservation_fee,
-      after_7_parking_fee,
-      payment_method,
-      status,
-      remarks,
-      created_at,
-      updated_at
-    `
-    )
-    .order("created_at", { ascending: false })
+  const allReservations = []
 
-  if (error) {
-    console.error("Fetch reservation payment fallback error:", error)
-    throw new Error(
-      error.message || "Failed to fetch reservation payment fallback records."
-    )
+  for (let from = 0; ; from += PAYMENT_FETCH_BATCH_SIZE) {
+    const to = from + PAYMENT_FETCH_BATCH_SIZE - 1
+
+    const { data, error } = await supabase
+      .from("reservations")
+      .select(
+        `
+        id,
+        reservation_reference,
+        university_user_id,
+        vehicle_record_id,
+        bay_id,
+        university_id,
+        user_name,
+        user_type,
+        plate_number,
+        normalized_plate_number,
+        reservation_start_at,
+        reservation_end_at,
+        reservation_fee,
+        after_7_parking_fee,
+        payment_method,
+        status,
+        remarks,
+        created_at,
+        updated_at
+      `
+      )
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch reservation payment fallback error:", error)
+      throw new Error(
+        error.message || "Failed to fetch reservation payment fallback records."
+      )
+    }
+
+    const batch = data || []
+    allReservations.push(...batch)
+
+    if (batch.length < PAYMENT_FETCH_BATCH_SIZE) {
+      break
+    }
   }
 
-  return data || []
+  return allReservations
 }
 
 // =====================================================
@@ -246,6 +343,10 @@ export function mapPaymentForAdmin(payment) {
   const paymentType = mapPaymentType(payment.payment_type)
   const paymentMethod = mapPaymentMethod(payment.payment_method)
   const status = mapPaymentStatus(payment.payment_status)
+
+  const cleanProvider = normalizeText(payment.payment_provider)
+  const isProviderManaged = Boolean(cleanProvider)
+  const isBillplz = cleanProvider === "billplz"
 
   const isGuestPayment =
     normalizeText(payment.payment_type) === "guest_parking" ||
@@ -277,13 +378,42 @@ export function mapPaymentForAdmin(payment) {
     status,
     source: mapPaymentSource(payment.payment_type),
 
+    paymentProvider: mapPaymentProvider(payment.payment_provider),
+    providerBillId: payment.provider_bill_id || "-",
+    providerReference: payment.provider_reference || "-",
+    providerStatus: mapProviderStatus(payment.provider_status),
+    providerReason: mapProviderReason(payment.provider_reason),
+    providerUpdatedAt: formatAdminDateTime(payment.provider_updated_at),
+
+    isProviderManaged,
+    isBillplz,
+
     remarks:
-      status === "Paid"
-        ? `${paymentType} completed successfully through ${paymentMethod}.`
-        : `${paymentType} is currently ${status.toLowerCase()}.`,
+      isBillplz && status === "Paid"
+        ? `${paymentType} was verified through Billplz and recorded as ${paymentMethod}.`
+        : status === "Paid"
+          ? `${paymentType} completed successfully through ${paymentMethod}.`
+          : `${paymentType} is currently ${status.toLowerCase()}.`,
 
     raw: payment,
     dataSource: "payment_transactions",
+  }
+}
+
+// =====================================================
+// FALLBACK PROVIDER FIELDS
+// =====================================================
+
+function getFallbackProviderFields() {
+  return {
+    paymentProvider: "-",
+    providerBillId: "-",
+    providerReference: "-",
+    providerStatus: "-",
+    providerReason: "-",
+    providerUpdatedAt: "-",
+    isProviderManaged: false,
+    isBillplz: false,
   }
 }
 
@@ -318,10 +448,12 @@ function mapReservationFeeFallbackForAdmin(reservation) {
     status,
     source: "Reservation Module",
 
+    ...getFallbackProviderFields(),
+
     remarks:
       status === "Paid"
-        ? "Reservation fee is calculated from the reservations table until wallet deduction creates a real payment transaction."
-        : "Reservation was cancelled. Refund handling will be connected through backend payment logic later.",
+        ? "Reservation fee is calculated from the reservations table when no real payment transaction exists."
+        : "Reservation was cancelled. Refund handling requires backend payment logic.",
 
     raw: reservation,
     dataSource: "reservation_fallback",
@@ -359,10 +491,12 @@ function mapAfter7ParkingFallbackForAdmin(reservation) {
     status,
     source: "After-7PM Parking Charge",
 
+    ...getFallbackProviderFields(),
+
     remarks:
       status === "Paid"
-        ? "After-7PM parking fee is calculated from the reservation record until real parking session billing is connected."
-        : "Reservation was cancelled. Refund handling will be connected through backend payment logic later.",
+        ? "After-7PM parking fee is calculated from the reservation record when no real parking-session payment exists."
+        : "Reservation was cancelled. Refund handling requires backend payment logic.",
 
     raw: reservation,
     dataSource: "reservation_fallback",
@@ -417,8 +551,13 @@ export async function loadAdminPayments() {
   )
 
   return [...mappedPayments, ...fallbackPayments].sort((a, b) => {
-    const firstDate = new Date(a.raw?.paid_at || a.raw?.created_at || 0)
-    const secondDate = new Date(b.raw?.paid_at || b.raw?.created_at || 0)
+    const firstDate = new Date(
+      a.raw?.paid_at || a.raw?.created_at || a.raw?.reservation_start_at || 0
+    )
+
+    const secondDate = new Date(
+      b.raw?.paid_at || b.raw?.created_at || b.raw?.reservation_start_at || 0
+    )
 
     return secondDate - firstDate
   })
@@ -441,12 +580,32 @@ function mapAdminStatusToDatabase(status) {
 
 // =====================================================
 // UPDATE PAYMENT TRANSACTION STATUS
-// Source: payment_transactions
+// Retained only for non-provider-managed internal transactions.
+// Billplz/provider-managed rows are strictly read-only here.
 // =====================================================
 
 export async function updatePaymentTransactionStatus(paymentId, newStatus) {
   if (!paymentId) {
     throw new Error("Payment ID is required.")
+  }
+
+  const { data: currentPayment, error: currentPaymentError } = await supabase
+    .from("payment_transactions")
+    .select("id, payment_provider")
+    .eq("id", paymentId)
+    .single()
+
+  if (currentPaymentError) {
+    console.error("Load payment before status update error:", currentPaymentError)
+    throw new Error(
+      currentPaymentError.message || "Failed to verify payment transaction."
+    )
+  }
+
+  if (normalizeText(currentPayment?.payment_provider)) {
+    throw new Error(
+      "Provider-managed payment status is read-only. It must be updated by the verified payment provider callback."
+    )
   }
 
   const databaseStatus = mapAdminStatusToDatabase(newStatus)
@@ -475,8 +634,15 @@ export async function updatePaymentTransactionStatus(paymentId, newStatus) {
       payment_method,
       payment_status,
       transaction_reference,
+      payment_provider,
+      provider_bill_id,
+      provider_reference,
+      provider_status,
+      provider_reason,
+      provider_updated_at,
       paid_at,
       created_at,
+      updated_at,
       guest_bookings (
         booking_reference,
         visitor_name,

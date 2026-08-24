@@ -7,6 +7,7 @@ import {
   Car,
   CreditCard,
   Receipt,
+  ShieldCheck,
   User,
   Wallet,
   X,
@@ -26,6 +27,10 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
   const amount = Number(payment.amount || 0)
   const isRefund = amount < 0
 
+  const showProviderDetails =
+    payment.isProviderManaged ||
+    (payment.paymentProvider && payment.paymentProvider !== "-")
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 px-4 py-6 backdrop-blur-sm">
       <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
@@ -44,7 +49,7 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
             </h2>
 
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              {payment.type} • {payment.userName}
+              {payment.type} â€¢ {payment.userName}
             </p>
           </div>
 
@@ -83,7 +88,7 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
             <InfoBox
               icon={User}
               label="User"
-              value={`${payment.userName} • ${payment.userType}`}
+              value={`${payment.userName} â€¢ ${payment.userType}`}
             />
 
             <InfoBox
@@ -117,9 +122,7 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
 
               <div className="mt-4 space-y-3">
                 <DetailRow label="Reference ID" value={payment.reference} />
-
                 <DetailRow label="Source" value={payment.source} />
-
                 <DetailRow label="Status" value={payment.status} status />
               </div>
             </div>
@@ -134,10 +137,9 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
               </div>
 
               <p className="mt-4 text-sm leading-6 text-slate-500">
-                This payment record is loaded from Supabase. Guest payments are
-                created from the guest web portal. Student/staff wallet top-up,
-                reservation fees, and after-7PM parking payments will be
-                connected in the next backend phase.
+                This record is loaded from the ParkUTeM payment ledger in
+                Supabase. Provider-managed guest payments are verified
+                server-side before the booking is activated.
               </p>
 
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -146,13 +148,75 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
                 </p>
 
                 <p className="mt-2 text-sm leading-6 text-amber-800">
-                  Payment status is read-only here to prevent local-only changes.
-                  Refunds or manual corrections should be handled through a
-                  proper backend function later.
+                  Provider-managed payment status is read-only. Billplz
+                  payment state must come from its verified callback, not
+                  from a local admin edit.
                 </p>
               </div>
             </div>
           </div>
+
+          {/* =====================================================
+              PROVIDER VERIFICATION
+              ===================================================== */}
+
+          {showProviderDetails && (
+            <div className="mt-6 rounded-[1.5rem] border border-emerald-200 bg-emerald-50/70 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <p className="text-sm font-black text-slate-950">
+                    Payment Provider Verification
+                  </p>
+
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                    Provider metadata is read-only audit information from
+                    the server-side payment integration.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <ProviderRow
+                  label="Provider"
+                  value={payment.paymentProvider}
+                />
+
+                <ProviderRow
+                  label="Provider Status"
+                  value={payment.providerStatus}
+                />
+
+                <ProviderRow
+                  label="Bill ID"
+                  value={payment.providerBillId}
+                />
+
+                <ProviderRow
+                  label="Provider Reference"
+                  value={payment.providerReference}
+                />
+
+                <ProviderRow
+                  label="Provider Updated"
+                  value={payment.providerUpdatedAt}
+                />
+
+                <ProviderRow
+                  label="Provider Reason"
+                  value={payment.providerReason}
+                />
+              </div>
+
+              <p className="mt-4 text-[11px] font-semibold leading-5 text-emerald-800">
+                Security-sensitive return tokens and raw provider callback
+                payloads are intentionally not exposed in the Admin UI.
+              </p>
+            </div>
+          )}
 
           {/* =====================================================
               PAYMENT LOGIC PANEL
@@ -168,10 +232,10 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
             </p>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Student/staff users will use wallet in the mobile app. Guest users
-              pay through the guest web portal and do not use wallet. Guest
-              no-show bookings are non-refundable, while overstay fees can be
-              issued through the guest web portal later.
+              Student and staff transactions use the ParkUTeM wallet flow.
+              Guest parking payments use the guest web portal and Billplz
+              when a provider is attached. Guest no-show bookings remain
+              non-refundable according to the current parking rule.
             </p>
           </div>
 
@@ -256,6 +320,24 @@ function DetailRow({ label, value, status = false }) {
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+// =====================================================
+// PROVIDER ROW
+// =====================================================
+
+function ProviderRow({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-emerald-100 bg-white p-4">
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
+        {label}
+      </p>
+
+      <p className="mt-2 break-all text-sm font-black text-slate-800">
+        {value || "-"}
+      </p>
     </div>
   )
 }

@@ -117,7 +117,7 @@ function ReservationDetailModal({
             </h2>
 
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              {reservation.userName} • {reservation.vehiclePlate}
+              {reservation.userName} - {reservation.vehiclePlate}
             </p>
 
             <div className="mt-3">
@@ -145,7 +145,7 @@ function ReservationDetailModal({
             <InfoBox
               icon={User}
               label="User"
-              value={`${reservation.userName} • ${reservation.universityId}`}
+              value={`${reservation.userName} - ${reservation.universityId}`}
               subValue={reservation.userType}
             />
 
@@ -159,7 +159,7 @@ function ReservationDetailModal({
             <InfoBox
               icon={MapPin}
               label="Bay / Zone"
-              value={`${reservation.bayNumber} • ${reservation.zone}`}
+              value={`${reservation.bayNumber} - ${reservation.zone}`}
               subValue={reservation.locationName || "Parking location"}
             />
 

@@ -1,4 +1,4 @@
-// =====================================================
+﻿// =====================================================
 // IMPORTS
 // =====================================================
 
@@ -149,7 +149,7 @@ export function mapParkingZoneForAdmin(zone) {
     zoneCode: zone.zone_code,
     zoneName: zone.zone_name,
     locationName: zone.location_name,
-    label: `${zone.zone_name} • ${zone.location_name}`,
+    label: `${zone.zone_name} â€¢ ${zone.location_name}`,
     value: zone.zone_name,
     raw: zone,
   }
@@ -464,3 +464,181 @@ export function unsubscribeFromParkingBays(channel) {
     supabase.removeChannel(channel)
   }
 }
+// =====================================================
+// PARKUTEM PHASE 03B - PARKING ZONE MAP MANAGEMENT
+// =====================================================
+
+const PARKING_ZONE_MANAGEMENT_SELECT = `
+  id,
+  zone_code,
+  zone_name,
+  location_name,
+  description,
+  is_active,
+  guest_enabled,
+  map_label,
+  map_latitude,
+  map_longitude,
+  created_at,
+  updated_at
+`
+
+function parseOptionalCoordinate(value, label, minimum, maximum) {
+  if (value === "" || value === null || value === undefined) {
+    return null
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} must be a valid number.`)
+  }
+
+  if (parsed < minimum || parsed > maximum) {
+    throw new Error(`${label} must be between ${minimum} and ${maximum}.`)
+  }
+
+  return Number(parsed.toFixed(6))
+}
+
+function buildParkingZoneMutationPayload(payload) {
+  const zoneCode = cleanZoneCode(payload.zoneCode)
+  const zoneName = cleanText(payload.zoneName)
+  const locationName = cleanText(payload.locationName)
+  const description = cleanText(payload.description)
+  const mapLabel = cleanText(payload.mapLabel)
+
+  if (!zoneCode) {
+    throw new Error("Zone code is required.")
+  }
+
+  if (!zoneName) {
+    throw new Error("Zone name is required.")
+  }
+
+  if (!locationName) {
+    throw new Error("Location name is required.")
+  }
+
+  const mapLatitude = parseOptionalCoordinate(
+    payload.mapLatitude,
+    "Latitude",
+    -90,
+    90
+  )
+
+  const mapLongitude = parseOptionalCoordinate(
+    payload.mapLongitude,
+    "Longitude",
+    -180,
+    180
+  )
+
+  const hasLatitude = mapLatitude !== null
+  const hasLongitude = mapLongitude !== null
+
+  if (hasLatitude !== hasLongitude) {
+    throw new Error("Latitude and longitude must either both be set or both be empty.")
+  }
+
+  return {
+    zone_code: zoneCode,
+    zone_name: zoneName,
+    location_name: locationName,
+    description: description || null,
+    is_active: payload.isActive !== false,
+    guest_enabled: payload.guestEnabled !== false,
+    map_label: mapLabel || null,
+    map_latitude: mapLatitude,
+    map_longitude: mapLongitude,
+    updated_at: new Date().toISOString(),
+  }
+}
+
+export function mapParkingZoneForManagement(zone) {
+  return {
+    id: zone.id,
+    zoneCode: zone.zone_code,
+    zoneName: zone.zone_name,
+    locationName: zone.location_name,
+    description: zone.description || "",
+    isActive: zone.is_active !== false,
+    guestEnabled: zone.guest_enabled !== false,
+    mapLabel: zone.map_label || "",
+    mapLatitude:
+      zone.map_latitude === null || zone.map_latitude === undefined
+        ? null
+        : Number(zone.map_latitude),
+    mapLongitude:
+      zone.map_longitude === null || zone.map_longitude === undefined
+        ? null
+        : Number(zone.map_longitude),
+    createdAt: zone.created_at || null,
+    updatedAt: zone.updated_at || null,
+    raw: zone,
+  }
+}
+
+export async function loadAdminParkingZonesForManagement() {
+  const { data, error } = await supabase
+    .from("parking_zones")
+    .select(PARKING_ZONE_MANAGEMENT_SELECT)
+    .order("zone_code", { ascending: true })
+
+  if (error) {
+    console.error("Load parking zones for management error:", error)
+    throw new Error(error.message || "Failed to load parking zones.")
+  }
+
+  return (data || []).map(mapParkingZoneForManagement)
+}
+
+export async function createParkingZoneWithMap(payload) {
+  const mutation = buildParkingZoneMutationPayload(payload)
+
+  const { data, error } = await supabase
+    .from("parking_zones")
+    .insert(mutation)
+    .select(PARKING_ZONE_MANAGEMENT_SELECT)
+    .single()
+
+  if (error) {
+    console.error("Create parking zone with map error:", error)
+
+    if (error.code === "23505") {
+      throw new Error("This zone code or zone name already exists.")
+    }
+
+    throw new Error(error.message || "Failed to create parking zone.")
+  }
+
+  return mapParkingZoneForManagement(data)
+}
+
+export async function updateParkingZoneDetails(zoneId, payload) {
+  if (!zoneId) {
+    throw new Error("Parking zone ID is required.")
+  }
+
+  const mutation = buildParkingZoneMutationPayload(payload)
+
+  const { data, error } = await supabase
+    .from("parking_zones")
+    .update(mutation)
+    .eq("id", zoneId)
+    .select(PARKING_ZONE_MANAGEMENT_SELECT)
+    .single()
+
+  if (error) {
+    console.error("Update parking zone details error:", error)
+
+    if (error.code === "23505") {
+      throw new Error("This zone code or zone name already exists.")
+    }
+
+    throw new Error(error.message || "Failed to update parking zone.")
+  }
+
+  return mapParkingZoneForManagement(data)
+}
+

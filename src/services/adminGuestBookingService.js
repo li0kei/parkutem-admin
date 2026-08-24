@@ -1,3 +1,9 @@
+// PARKUTEM_PHASE_06D_R1_FIX1_POSTGREST_FK_HINT
+// Explicit FK: guest_bookings_bay_id_fkey
+// PARKUTEM_PHASE_06D_R1_GUEST_BAY_DISPLAY
+// Historical guest bay assignment from guest_bookings.bay_id
+// PARKUTEM_PHASE_06C_R1_SOURCE_LOCKED
+// Billplz/provider-managed guest payment integrity
 // =====================================================
 // IMPORTS
 // =====================================================
@@ -26,6 +32,8 @@ const GUEST_BOOKING_SELECT = `
   normalized_plate_number,
   purpose,
   host_department,
+  zone_id,
+  bay_id,
   visit_start_at,
   visit_end_at,
   duration_hours,
@@ -46,6 +54,10 @@ const GUEST_BOOKING_SELECT = `
     zone_code,
     zone_name,
     location_name
+  ),
+  assigned_bay:parking_bays!guest_bookings_bay_id_fkey (
+    id,
+    bay_code
   )
 `
 
@@ -821,17 +833,37 @@ function validateAdminBookingPayload(payload) {
 // =====================================================
 
 export async function fetchGuestBookings() {
-  const { data, error } = await supabase
-    .from("guest_bookings")
-    .select(GUEST_BOOKING_SELECT)
-    .order("created_at", { ascending: false })
+  // PARKUTEM_PHASE_06F_R1_GUEST_SCALABILITY
+  const batchSize = 500
+  const allBookings = []
 
-  if (error) {
-    console.error("Fetch guest bookings error:", error)
-    throw buildFriendlySupabaseError(error, "Failed to fetch guest bookings.")
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("guest_bookings")
+      .select(GUEST_BOOKING_SELECT)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch guest bookings error:", error)
+      throw buildFriendlySupabaseError(
+        error,
+        "Failed to fetch guest bookings."
+      )
+    }
+
+    const batch = data || []
+    allBookings.push(...batch)
+
+    if (batch.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allBookings
 }
 
 // =====================================================
@@ -865,34 +897,56 @@ export async function fetchGuestBookingById(bookingId) {
 // =====================================================
 
 export async function fetchGuestPaymentTransactions() {
-  const { data, error } = await supabase
-    .from("payment_transactions")
-    .select(
-      `
-      id,
-      guest_booking_id,
-      payment_type,
-      amount,
-      payment_method,
-      payment_status,
-      transaction_reference,
-      paid_at,
-      created_at,
-      updated_at
-      `
-    )
-    .not("guest_booking_id", "is", null)
-    .order("created_at", { ascending: false })
+  const batchSize = 500
+  const allPayments = []
 
-  if (error) {
-    console.error("Fetch guest payment transactions error:", error)
-    throw buildFriendlySupabaseError(
-      error,
-      "Failed to fetch guest payment transactions."
-    )
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("payment_transactions")
+      .select(
+        `
+        id,
+        guest_booking_id,
+        payment_type,
+        amount,
+        payment_method,
+        payment_status,
+        transaction_reference,
+        payment_provider,
+        provider_bill_id,
+        provider_reference,
+        provider_status,
+        provider_reason,
+        provider_updated_at,
+        paid_at,
+        created_at,
+        updated_at
+        `
+      )
+      .not("guest_booking_id", "is", null)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch guest payment transactions error:", error)
+      throw buildFriendlySupabaseError(
+        error,
+        "Failed to fetch guest payment transactions."
+      )
+    }
+
+    const batch = data || []
+    allPayments.push(...batch)
+
+    if (batch.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allPayments
 }
 
 // =====================================================
@@ -900,31 +954,50 @@ export async function fetchGuestPaymentTransactions() {
 // =====================================================
 
 export async function fetchGuestAnprLogs() {
-  const { data, error } = await supabase
-    .from("anpr_logs")
-    .select(
-      `
-      id,
-      matched_guest_booking_id,
-      detection_type,
-      access_status,
-      access_decision,
-      reason,
-      detected_at,
-      entry_time,
-      exit_time,
-      created_at
-      `
-    )
-    .not("matched_guest_booking_id", "is", null)
-    .order("detected_at", { ascending: false })
+  const batchSize = 500
+  const allLogs = []
 
-  if (error) {
-    console.error("Fetch guest ANPR logs error:", error)
-    throw buildFriendlySupabaseError(error, "Failed to fetch guest ANPR logs.")
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("anpr_logs")
+      .select(
+        `
+        id,
+        matched_guest_booking_id,
+        detection_type,
+        access_status,
+        access_decision,
+        reason,
+        detected_at,
+        entry_time,
+        exit_time,
+        created_at
+        `
+      )
+      .not("matched_guest_booking_id", "is", null)
+      .order("detected_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch guest ANPR logs error:", error)
+      throw buildFriendlySupabaseError(
+        error,
+        "Failed to fetch guest ANPR logs."
+      )
+    }
+
+    const batch = data || []
+    allLogs.push(...batch)
+
+    if (batch.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allLogs
 }
 
 // =====================================================
@@ -940,7 +1013,17 @@ export function mapGuestBookingForAdmin(
 
   const zoneName = booking.parking_zones?.zone_name || "Zone A"
   const locationName = booking.parking_zones?.location_name || "-"
-  const paymentStatus = booking.payment_status || paymentTransaction?.payment_status
+  const bayNumber = booking.assigned_bay?.bay_code || null
+
+  const paymentProvider = cleanText(
+    paymentTransaction?.payment_provider
+  ).toLowerCase()
+
+  const providerManaged = Boolean(paymentProvider)
+
+  const paymentStatus = providerManaged
+    ? paymentTransaction?.payment_status || booking.payment_status
+    : booking.payment_status || paymentTransaction?.payment_status
 
   return {
     id: booking.id,
@@ -956,10 +1039,14 @@ export function mapGuestBookingForAdmin(
     visitPurpose: booking.purpose,
     hostDepartment: booking.host_department,
 
-    bayNumber: null,
+    bayNumber,
     zone: zoneName,
     locationName,
-    parkingAllocation: "Not assigned yet",
+    parkingAllocation: bayNumber
+      ? `${bayNumber} Ã¢â‚¬Â¢ ${zoneName}`
+      : booking.bay_id
+        ? "Assigned bay unavailable"
+        : "Not assigned yet",
 
     bookingDate: formatAdminDate(booking.visit_start_at),
     startTime: formatAdminTime(booking.visit_start_at),
@@ -968,8 +1055,23 @@ export function mapGuestBookingForAdmin(
 
     parkingFee: Number(booking.amount || 0),
     paymentStatus: mapPaymentStatus(paymentStatus),
-    paymentMethod: paymentTransaction?.payment_method || "Simulated",
+    paymentMethod: paymentTransaction?.payment_method || "-",
     paymentReference: paymentTransaction?.transaction_reference || "-",
+
+    paymentProvider:
+      paymentProvider === "billplz"
+        ? "Billplz"
+        : paymentProvider || "-",
+
+    providerManaged,
+    providerBillId: paymentTransaction?.provider_bill_id || "-",
+    providerReference: paymentTransaction?.provider_reference || "-",
+    providerStatus: paymentTransaction?.provider_status || "-",
+    providerReason: paymentTransaction?.provider_reason || "-",
+    providerUpdatedAt: formatAdminDateTime(
+      paymentTransaction?.provider_updated_at
+    ),
+
     receiptStatus: paymentStatus === "paid" ? "Ready" : "Pending",
 
     anprAccess: mapAnprAccessStatus(booking.anpr_access_status),
@@ -1149,6 +1251,12 @@ async function findGuestPaymentTransaction(guestBookingId) {
       payment_method,
       payment_status,
       transaction_reference,
+      payment_provider,
+      provider_bill_id,
+      provider_reference,
+      provider_status,
+      provider_reason,
+      provider_updated_at,
       paid_at,
       created_at,
       updated_at
@@ -1184,6 +1292,16 @@ export async function syncGuestPaymentTransaction(booking, paymentStatusValue) {
   )
 
   const existingTransaction = await findGuestPaymentTransaction(booking.id)
+
+  if (existingTransaction?.payment_provider) {
+    if (paymentStatus !== existingTransaction.payment_status) {
+      throw new Error(
+        "Provider-managed payment transaction is read-only. Payment status must come from the verified payment provider callback."
+      )
+    }
+
+    return existingTransaction
+  }
 
   const transactionPayload = {
     guest_booking_id: booking.id,
@@ -1370,7 +1488,6 @@ export async function createAdminGuestBooking(formData, options = {}) {
   const payload = normalizeAdminBookingPayload(formData)
   validateAdminBookingPayload(payload)
 
-  let booking = null
   let paymentWarning = ""
   let emailResult = null
   let emailWarning = ""
@@ -1381,11 +1498,9 @@ export async function createAdminGuestBooking(formData, options = {}) {
     anprAccessStatus: payload.anprAccessStatus,
   })
 
-  if (shouldUseConfirmedRpc) {
-    booking = await createConfirmedGuestBookingThroughRpc(payload)
-  } else {
-    booking = await createGuestBookingDirectly(payload)
-  }
+  const booking = shouldUseConfirmedRpc
+    ? await createConfirmedGuestBookingThroughRpc(payload)
+    : await createGuestBookingDirectly(payload)
 
   try {
     if (payload.paymentStatus === "paid") {
@@ -1444,12 +1559,37 @@ export async function updateAdminGuestBooking(bookingId, formData, options = {})
     throw new Error("Guest booking not found.")
   }
 
+  const providerManagedPayment =
+    await findGuestPaymentTransaction(bookingId)
+
   const payload = normalizeAdminBookingPayload({
     ...currentBooking,
     ...formData,
   })
 
   validateAdminBookingPayload(payload)
+
+  if (providerManagedPayment?.payment_provider) {
+    if (payload.paymentStatus !== providerManagedPayment.payment_status) {
+      throw new Error(
+        "Payment status is locked because this booking is managed by the verified payment provider."
+      )
+    }
+
+    if (
+      Math.abs(
+        Number(payload.amount || 0) -
+          Number(providerManagedPayment.amount || 0)
+      ) > 0.009
+    ) {
+      throw new Error(
+        "Parking fee is locked because this booking already has a provider-managed payment."
+      )
+    }
+
+    payload.paymentStatus = providerManagedPayment.payment_status
+    payload.amount = Number(providerManagedPayment.amount || 0)
+  }
 
   const updatePayload = {
     visitor_name: payload.visitorName,
@@ -1611,6 +1751,15 @@ export async function updateGuestPaymentStatus(
 
   if (!currentBooking) {
     throw new Error("Guest booking not found.")
+  }
+
+  const providerManagedPayment =
+    await findGuestPaymentTransaction(bookingId)
+
+  if (providerManagedPayment?.payment_provider) {
+    throw new Error(
+      "This payment is managed by the verified payment provider and cannot be changed manually."
+    )
   }
 
   const updatePayload = {
@@ -1810,7 +1959,7 @@ export async function cancelGuestBooking(
     anpr_access_status: "expired",
   }
 
-  let cancelledBooking = null
+  let cancelledBooking
   let warning = ""
 
   // First attempt: use blocked ANPR access.

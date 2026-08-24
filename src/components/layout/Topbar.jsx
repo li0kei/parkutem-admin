@@ -1,4 +1,4 @@
-// =====================================================
+﻿// =====================================================
 // IMPORTS
 // =====================================================
 
@@ -20,6 +20,14 @@ const pageTitleMap = {
   "/parking-bays": {
     title: "Parking Bay Management",
     subtitle: "Track bay availability, sensor status, and zone usage.",
+  },
+  "/parking": {
+    title: "Parking Management",
+    subtitle: "Manage parking areas, map locations, Guest access, and individual bays in one workspace.",
+  },
+  "/parking-zones": {
+    title: "Parking Zone & Map Management",
+    subtitle: "Configure guest-enabled zones and campus map coordinates.",
   },
   "/anpr-logs": {
     title: "ANPR Logs",
@@ -149,3 +157,5 @@ function Topbar({ setIsMobileOpen }) {
 }
 
 export default Topbar
+
+

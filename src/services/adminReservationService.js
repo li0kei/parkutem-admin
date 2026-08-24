@@ -102,36 +102,6 @@ function roundMoney(value) {
   return Number((Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100).toFixed(2))
 }
 
-function createUuid() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
-    const random = Math.floor(Math.random() * 16)
-    const value = char === "x" ? random : (random & 0x3) | 0x8
-
-    return value.toString(16)
-  })
-}
-
-function createReference(prefix) {
-  const now = new Date()
-
-  const datePart = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("")
-
-  const randomPart = Math.random().toString(16).slice(2, 8).toUpperCase()
-
-  return `${prefix}-${datePart}-${randomPart}`
-}
-
 function normalizePlateNumber(value) {
   return String(value || "")
     .toUpperCase()
@@ -471,17 +441,34 @@ export function mapReservationForAdmin(reservation) {
 // =====================================================
 
 export async function fetchReservations() {
-  const { data, error } = await supabase
-    .from("reservations")
-    .select(RESERVATION_SELECT)
-    .order("reservation_start_at", { ascending: false })
+  // PARKUTEM_PHASE_06G_R1_RESERVATIONS_SCALABILITY
+  const batchSize = 500
+  const allReservations = []
 
-  if (error) {
-    console.error("Fetch reservations error:", error)
-    throw createFriendlyError(error, "Failed to fetch reservations.")
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("reservations")
+      .select(RESERVATION_SELECT)
+      .order("reservation_start_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch reservations error:", error)
+      throw createFriendlyError(error, "Failed to fetch reservations.")
+    }
+
+    const batch = data || []
+    allReservations.push(...batch)
+
+    if (batch.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allReservations
 }
 
 async function fetchReservationRecordById(reservationId) {
@@ -506,8 +493,8 @@ export async function fetchReservationById(reservationId) {
 }
 
 export async function loadAdminReservations() {
-  await refreshReservationStatuses()
-
+  // PARKUTEM_PHASE_06G_R3B_ADMIN_ATOMIC_CUTOVER
+  // Reservation lifecycle maintenance is owned by pg_cron, not page loads.
   const reservations = await fetchReservations()
 
   return reservations.map(mapReservationForAdmin)
@@ -530,7 +517,7 @@ function mapUniversityUserForForm(user) {
     department: user.department || "",
     walletBalance: Number(user.wallet_balance || 0),
     accountStatus: user.account_status || "active",
-    label: `${user.full_name} • ${user.university_id}`,
+    label: `${user.full_name} - ${user.university_id}`,
     raw: user,
   }
 }
@@ -549,7 +536,7 @@ function mapVehicleForForm(vehicle) {
     faculty: vehicle.faculty || "",
     stickerStatus: vehicle.sticker_status || "",
     anprAccessStatus: vehicle.anpr_access_status || "",
-    label: `${vehicle.plate_number} • ${vehicle.vehicle_model || "Vehicle"}`,
+    label: `${vehicle.plate_number} - ${vehicle.vehicle_model || "Vehicle"}`,
     raw: vehicle,
   }
 }
@@ -566,59 +553,100 @@ function mapBayForForm(bay) {
     zoneCode: zone?.zone_code || "",
     zoneName: zone?.zone_name || "",
     locationName: zone?.location_name || "",
-    label: `${bay.bay_code} • ${zone?.zone_name || zone?.zone_code || "Zone"}`,
+    label: `${bay.bay_code} - ${zone?.zone_name || zone?.zone_code || "Zone"}`,
     raw: bay,
   }
 }
 
 export async function loadReservationFormOptions() {
-  const [usersResult, vehiclesResult, baysResult, zonesResult] = await Promise.all([
-    supabase
-      .from("university_users")
-      .select(UNIVERSITY_USER_SELECT)
-      .eq("account_status", "active")
-      .in("role", ["student", "staff"])
-      .order("full_name", { ascending: true }),
+  const batchSize = 500
 
-    supabase
-      .from("vehicle_records")
-      .select(VEHICLE_SELECT)
-      .in("user_type", ["student", "staff"])
-      .order("plate_number", { ascending: true }),
+  async function fetchAllOptionRows({
+    table,
+    selectClause,
+    applyFilters,
+    orderColumn,
+  }) {
+    const allRows = []
 
-    supabase
-      .from("parking_bays")
-      .select(PARKING_BAY_SELECT)
-      .order("bay_code", { ascending: true }),
+    for (let from = 0; ; from += batchSize) {
+      const to = from + batchSize - 1
 
-    supabase
-      .from("parking_zones")
-      .select("id, zone_code, zone_name, location_name, is_active")
-      .eq("is_active", true)
-      .order("zone_code", { ascending: true }),
+      let query = supabase
+        .from(table)
+        .select(selectClause)
+
+      if (applyFilters) {
+        query = applyFilters(query)
+      }
+
+      const { data, error } = await query
+        .order(orderColumn, { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+
+      if (error) {
+        throw createFriendlyError(
+          error,
+          `Failed to load reservation options from ${table}.`
+        )
+      }
+
+      const batch = data || []
+      allRows.push(...batch)
+
+      if (batch.length < batchSize) {
+        break
+      }
+    }
+
+    return allRows
+  }
+
+  const [
+    users,
+    vehicles,
+    parkingBays,
+    zones,
+  ] = await Promise.all([
+    fetchAllOptionRows({
+      table: "university_users",
+      selectClause: UNIVERSITY_USER_SELECT,
+      applyFilters: (query) =>
+        query
+          .eq("account_status", "active")
+          .in("role", ["student", "staff"]),
+      orderColumn: "full_name",
+    }),
+
+    fetchAllOptionRows({
+      table: "vehicle_records",
+      selectClause: VEHICLE_SELECT,
+      applyFilters: (query) =>
+        query.in("user_type", ["student", "staff"]),
+      orderColumn: "plate_number",
+    }),
+
+    fetchAllOptionRows({
+      table: "parking_bays",
+      selectClause: PARKING_BAY_SELECT,
+      orderColumn: "bay_code",
+    }),
+
+    fetchAllOptionRows({
+      table: "parking_zones",
+      selectClause: "id, zone_code, zone_name, location_name, is_active",
+      applyFilters: (query) =>
+        query.eq("is_active", true),
+      orderColumn: "zone_code",
+    }),
   ])
 
-  if (usersResult.error) {
-    throw createFriendlyError(usersResult.error, "Failed to load users.")
-  }
-
-  if (vehiclesResult.error) {
-    throw createFriendlyError(vehiclesResult.error, "Failed to load vehicles.")
-  }
-
-  if (baysResult.error) {
-    throw createFriendlyError(baysResult.error, "Failed to load parking bays.")
-  }
-
-  if (zonesResult.error) {
-    throw createFriendlyError(zonesResult.error, "Failed to load parking zones.")
-  }
-
   return {
-    users: (usersResult.data || []).map(mapUniversityUserForForm),
-    vehicles: (vehiclesResult.data || []).map(mapVehicleForForm),
-    parkingBays: (baysResult.data || []).map(mapBayForForm),
-    zones: zonesResult.data || [],
+    users: users.map(mapUniversityUserForForm),
+    vehicles: vehicles.map(mapVehicleForForm),
+    parkingBays: parkingBays.map(mapBayForForm),
+    zones,
   }
 }
 
@@ -723,16 +751,6 @@ function ensureVehicleBelongsToUser(user, vehicle) {
   }
 }
 
-function ensureBayCanBeReserved(bay) {
-  if (bay.status === "maintenance") {
-    throw new Error("Selected parking bay is currently under maintenance.")
-  }
-
-  if (bay.status === "occupied") {
-    throw new Error("Selected parking bay is currently occupied.")
-  }
-}
-
 export async function checkReservationBayAvailability({
   bayId,
   reservationStartAt,
@@ -782,249 +800,13 @@ export async function checkReservationBayAvailability({
   }
 }
 
-async function ensureBayAvailableForReservation({
-  bay,
-  reservationStartAt,
-  reservationEndAt,
-  excludeReservationId = null,
-  status,
-}) {
-  if (!ACTIVE_RESERVATION_STATUSES.includes(status)) {
-    return
-  }
-
-  ensureBayCanBeReserved(bay)
-
-  const availability = await checkReservationBayAvailability({
-    bayId: bay.id,
-    reservationStartAt,
-    reservationEndAt,
-    excludeReservationId,
-  })
-
-  if (!availability.available) {
-    const conflict = availability.conflicts[0]
-
-    throw new Error(
-      `Selected bay is already reserved for this time. Conflict: ${conflict.reservation_reference}.`
-    )
-  }
-}
-
 // =====================================================
 // PAYMENT + WALLET
 // =====================================================
 
-async function getPaidReservationAmount(reservationId) {
-  const { data, error } = await supabase
-    .from("payment_transactions")
-    .select("amount")
-    .eq("reservation_id", reservationId)
-    .eq("payment_type", "reservation_fee")
-    .eq("payment_method", "wallet")
-    .eq("payment_status", "paid")
-
-  if (error) {
-    console.error("Fetch reservation paid amount error:", error)
-    throw createFriendlyError(error, "Failed to check existing reservation payment.")
-  }
-
-  return (data || []).reduce((total, item) => {
-    return total + Number(item.amount || 0)
-  }, 0)
-}
-
-async function deductUserWallet({ userId, amount }) {
-  const user = await fetchUniversityUserForReservation(userId)
-  const currentBalance = Number(user.wallet_balance || 0)
-  const newBalance = roundMoney(currentBalance - amount)
-
-  if (newBalance < 0) {
-    throw new Error(
-      `Insufficient wallet balance. Current balance is RM ${currentBalance.toFixed(2)}, required RM ${amount.toFixed(2)}.`
-    )
-  }
-
-  const { error } = await supabase
-    .from("university_users")
-    .update({
-      wallet_balance: newBalance,
-    })
-    .eq("id", userId)
-
-  if (error) {
-    console.error("Deduct wallet error:", error)
-    throw createFriendlyError(error, "Failed to deduct wallet balance.")
-  }
-
-  return {
-    previousBalance: currentBalance,
-    newBalance,
-  }
-}
-
-async function restoreUserWallet({ userId, previousBalance }) {
-  const { error } = await supabase
-    .from("university_users")
-    .update({
-      wallet_balance: roundMoney(previousBalance),
-    })
-    .eq("id", userId)
-
-  if (error) {
-    console.error("Wallet rollback error:", error)
-  }
-}
-
-async function createReservationPaymentTransaction({
-  reservationId,
-  payerUserId,
-  amount,
-}) {
-  const nowIso = new Date().toISOString()
-
-  const { data, error } = await supabase
-    .from("payment_transactions")
-    .insert({
-      id: createUuid(),
-      payer_user_id: payerUserId,
-      reservation_id: reservationId,
-      payment_type: "reservation_fee",
-      amount: roundMoney(amount),
-      payment_method: "wallet",
-      payment_status: "paid",
-      transaction_reference: createReference("RSV-PAY"),
-      paid_at: nowIso,
-      created_at: nowIso,
-      updated_at: nowIso,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    console.error("Create reservation payment transaction error:", error)
-    throw createFriendlyError(error, "Failed to create reservation payment transaction.")
-  }
-
-  return data
-}
-
-async function chargeWalletForReservation({
-  reservationId,
-  payerUserId,
-  amount,
-}) {
-  const amountToCharge = roundMoney(amount)
-
-  if (amountToCharge <= 0) {
-    return null
-  }
-
-  const walletResult = await deductUserWallet({
-    userId: payerUserId,
-    amount: amountToCharge,
-  })
-
-  try {
-    return await createReservationPaymentTransaction({
-      reservationId,
-      payerUserId,
-      amount: amountToCharge,
-    })
-  } catch (error) {
-    await restoreUserWallet({
-      userId: payerUserId,
-      previousBalance: walletResult.previousBalance,
-    })
-
-    throw error
-  }
-}
-
-async function chargeReservationPaymentDifference({
-  reservationId,
-  payerUserId,
-  totalAmount,
-}) {
-  const alreadyPaidAmount = await getPaidReservationAmount(reservationId)
-  const amountToCharge = roundMoney(Number(totalAmount || 0) - alreadyPaidAmount)
-
-  if (amountToCharge <= 0) {
-    return null
-  }
-
-  return chargeWalletForReservation({
-    reservationId,
-    payerUserId,
-    amount: amountToCharge,
-  })
-}
-
 // =====================================================
 // BAY STATUS SYNC
 // =====================================================
-
-export async function syncReservationBayStatus(bayId) {
-  if (!bayId) {
-    return null
-  }
-
-  const { data: activeReservations, error: reservationError } = await supabase
-    .from("reservations")
-    .select(
-      `
-      id,
-      plate_number,
-      user_type,
-      reservation_start_at,
-      reservation_end_at,
-      status
-    `
-    )
-    .eq("bay_id", bayId)
-    .in("status", ACTIVE_RESERVATION_STATUSES)
-    .order("reservation_start_at", { ascending: true })
-    .limit(1)
-
-  if (reservationError) {
-    console.error("Sync bay reservation lookup error:", reservationError)
-    throw createFriendlyError(reservationError, "Failed to check active bay reservations.")
-  }
-
-  const activeReservation = activeReservations?.[0] || null
-
-  const nextBayStatus = activeReservation ? "reserved" : "available"
-
-  const updatePayload = activeReservation
-    ? {
-        status: nextBayStatus,
-        current_plate_number: activeReservation.plate_number,
-        current_user_type: activeReservation.user_type,
-        current_guest_booking_id: null,
-        last_updated_at: new Date().toISOString(),
-      }
-    : {
-        status: nextBayStatus,
-        current_plate_number: null,
-        current_user_type: null,
-        current_guest_booking_id: null,
-        last_updated_at: new Date().toISOString(),
-      }
-
-  const { data, error } = await supabase
-    .from("parking_bays")
-    .update(updatePayload)
-    .eq("id", bayId)
-    .select(PARKING_BAY_SELECT)
-    .single()
-
-  if (error) {
-    console.error("Sync bay status error:", error)
-    throw createFriendlyError(error, "Failed to sync parking bay status.")
-  }
-
-  return data
-}
 
 // =====================================================
 // CREATE / UPDATE PAYLOAD BUILDER
@@ -1135,57 +917,45 @@ export async function createAdminReservation(payload) {
   requirePayloadValue(payload, ["universityUserId", "university_user_id"], "University user")
   requirePayloadValue(payload, ["vehicleRecordId", "vehicle_record_id"], "Vehicle")
   requirePayloadValue(payload, ["bayId", "bay_id"], "Parking bay")
-  requirePayloadValue(payload, ["reservationStartAt", "reservation_start_at", "startAt", "start_at"], "Start time")
-  requirePayloadValue(payload, ["reservationEndAt", "reservation_end_at", "endAt", "end_at"], "End time")
+  requirePayloadValue(
+    payload,
+    ["reservationStartAt", "reservation_start_at", "startAt", "start_at"],
+    "Start time"
+  )
+  requirePayloadValue(
+    payload,
+    ["reservationEndAt", "reservation_end_at", "endAt", "end_at"],
+    "End time"
+  )
 
   const chargeWallet =
     getPayloadValue(payload, ["chargeWallet", "charge_wallet"], true) !== false
 
-  const builtPayload = await buildReservationPayload(payload)
-  const { user, bay, values, fees } = builtPayload
+  const { values } = await buildReservationPayload(payload)
 
-  await ensureBayAvailableForReservation({
-    bay,
-    reservationStartAt: values.reservation_start_at,
-    reservationEndAt: values.reservation_end_at,
-    status: values.status,
+  const { data, error } = await supabase.rpc("admin_create_reservation_atomic", {
+    p_university_user_id: values.university_user_id,
+    p_vehicle_record_id: values.vehicle_record_id,
+    p_bay_id: values.bay_id,
+    p_reservation_start_at: values.reservation_start_at,
+    p_reservation_end_at: values.reservation_end_at,
+    p_status: values.status,
+    p_remarks: values.remarks,
+    p_charge_wallet: chargeWallet,
   })
 
-  const insertPayload = {
-    ...values,
-    reservation_reference: createReference("RSV"),
-    created_at: new Date().toISOString(),
-  }
-
-  const { data, error } = await supabase
-    .from("reservations")
-    .insert(insertPayload)
-    .select(RESERVATION_SELECT)
-    .single()
-
   if (error) {
-    console.error("Create reservation error:", error)
+    console.error("Create reservation atomic RPC error:", error)
     throw createFriendlyError(error, "Failed to create reservation.")
   }
 
-  try {
-    await syncReservationBayStatus(data.bay_id)
+  const reservationId = data?.reservation_id
 
-    if (chargeWallet && data.status !== "cancelled") {
-      await chargeWalletForReservation({
-        reservationId: data.id,
-        payerUserId: user.id,
-        amount: fees.totalAmount,
-      })
-    }
-
-    return fetchReservationById(data.id)
-  } catch (error) {
-    await supabase.from("reservations").delete().eq("id", data.id)
-    await syncReservationBayStatus(data.bay_id)
-
-    throw error
+  if (!reservationId) {
+    throw new Error("Reservation was created but no reservation ID was returned.")
   }
+
+  return fetchReservationById(reservationId)
 }
 
 // =====================================================
@@ -1198,44 +968,28 @@ export async function updateAdminReservation(reservationId, payload) {
   const chargeWallet =
     getPayloadValue(payload, ["chargeWallet", "charge_wallet"], false) === true
 
-  const builtPayload = await buildReservationPayload(payload, existingReservation)
-  const { user, bay, values, fees } = builtPayload
+  const { values } = await buildReservationPayload(payload, existingReservation)
 
-  await ensureBayAvailableForReservation({
-    bay,
-    reservationStartAt: values.reservation_start_at,
-    reservationEndAt: values.reservation_end_at,
-    excludeReservationId: reservationId,
-    status: values.status,
+  const { data, error } = await supabase.rpc("admin_update_reservation_atomic", {
+    p_reservation_id: reservationId,
+    p_university_user_id: values.university_user_id,
+    p_vehicle_record_id: values.vehicle_record_id,
+    p_bay_id: values.bay_id,
+    p_reservation_start_at: values.reservation_start_at,
+    p_reservation_end_at: values.reservation_end_at,
+    p_status: values.status,
+    p_remarks: values.remarks,
+    p_charge_wallet: chargeWallet,
   })
 
-  const { data, error } = await supabase
-    .from("reservations")
-    .update(values)
-    .eq("id", reservationId)
-    .select(RESERVATION_SELECT)
-    .single()
-
   if (error) {
-    console.error("Update reservation error:", error)
+    console.error("Update reservation atomic RPC error:", error)
     throw createFriendlyError(error, "Failed to update reservation.")
   }
 
-  if (existingReservation.bay_id && existingReservation.bay_id !== data.bay_id) {
-    await syncReservationBayStatus(existingReservation.bay_id)
-  }
+  const updatedReservationId = data?.reservation_id || reservationId
 
-  await syncReservationBayStatus(data.bay_id)
-
-  if (chargeWallet && data.status !== "cancelled") {
-    await chargeReservationPaymentDifference({
-      reservationId: data.id,
-      payerUserId: user.id,
-      totalAmount: fees.totalAmount,
-    })
-  }
-
-  return fetchReservationById(data.id)
+  return fetchReservationById(updatedReservationId)
 }
 
 // =====================================================
@@ -1245,24 +999,22 @@ export async function updateAdminReservation(reservationId, payload) {
 export async function updateReservationStatus(reservationId, newStatus) {
   const dbStatus = normalizeReservationStatus(newStatus)
 
-  const { data, error } = await supabase
-    .from("reservations")
-    .update({
-      status: dbStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", reservationId)
-    .select(RESERVATION_SELECT)
-    .single()
+  const { data, error } = await supabase.rpc(
+    "admin_update_reservation_status_atomic",
+    {
+      p_reservation_id: reservationId,
+      p_status: dbStatus,
+    }
+  )
 
   if (error) {
-    console.error("Update reservation status error:", error)
+    console.error("Update reservation status atomic RPC error:", error)
     throw createFriendlyError(error, "Failed to update reservation status.")
   }
 
-  await syncReservationBayStatus(data.bay_id)
+  const updatedReservationId = data?.reservation_id || reservationId
 
-  return mapReservationForAdmin(data)
+  return fetchReservationById(updatedReservationId)
 }
 
 export async function cancelAdminReservation(reservationId) {
@@ -1275,39 +1027,21 @@ export async function cancelAdminReservation(reservationId) {
 // =====================================================
 
 export async function deleteAdminReservation(reservationId) {
-  const existingReservation = await fetchReservationRecordById(reservationId)
-
-  const { error: detachPaymentError } = await supabase
-    .from("payment_transactions")
-    .update({
-      reservation_id: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("reservation_id", reservationId)
-
-  if (detachPaymentError) {
-    console.error("Detach reservation payment transactions error:", detachPaymentError)
-    throw createFriendlyError(
-      detachPaymentError,
-      "Failed to detach reservation payment transactions."
-    )
-  }
-
-  const { error } = await supabase
-    .from("reservations")
-    .delete()
-    .eq("id", reservationId)
+  const { data, error } = await supabase.rpc(
+    "admin_delete_reservation_atomic",
+    {
+      p_reservation_id: reservationId,
+    }
+  )
 
   if (error) {
-    console.error("Delete reservation error:", error)
+    console.error("Delete reservation atomic RPC error:", error)
     throw createFriendlyError(error, "Failed to delete reservation.")
   }
 
-  await syncReservationBayStatus(existingReservation.bay_id)
-
   return {
-    deletedReservationId: reservationId,
-    bayId: existingReservation.bay_id,
+    deletedReservationId: data?.deleted_reservation_id || reservationId,
+    bayId: data?.bay_id || null,
   }
 }
 
@@ -1350,13 +1084,3 @@ export function unsubscribeFromReservations(channel) {
 // Proper backend scheduling should still use Supabase Cron.
 // =====================================================
 
-export async function refreshReservationStatuses() {
-  const { data, error } = await supabase.rpc("update_reservation_statuses")
-
-  if (error) {
-    console.warn("Refresh reservation statuses warning:", error.message)
-    return null
-  }
-
-  return data?.[0] || null
-}

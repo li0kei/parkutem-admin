@@ -1,4 +1,4 @@
-// =====================================================
+﻿// =====================================================
 // IMPORTS
 // =====================================================
 
@@ -34,8 +34,8 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    label: "Parking Bays",
-    path: "/parking-bays",
+    label: "Parking Management",
+    path: "/parking",
     icon: MonitorCog,
   },
   {
@@ -238,3 +238,4 @@ function Sidebar({ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen })
 }
 
 export default Sidebar
+

@@ -2,13 +2,12 @@
 // IMPORTS
 // =====================================================
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity,
   AlertTriangle,
   BarChart3,
   CalendarCheck,
-  CalendarDays,
   Car,
   ChevronDown,
   Download,
@@ -16,7 +15,6 @@ import {
   Radio,
   RefreshCw,
   ScanLine,
-  TrendingUp,
   Wallet,
 } from "lucide-react"
 
@@ -170,7 +168,7 @@ function Reports() {
     // LOAD REPORTS DATA FROM SUPABASE
     // =====================================================
 
-    async function loadReportsData({ silent = false } = {}) {
+    const loadReportsData = useCallback(async ({ silent = false } = {}) => {
       if (!silent) {
         setIsLoading(true)
       }
@@ -201,22 +199,28 @@ function Reports() {
           setIsLoading(false)
         }
       }
-    }
+    }, [
+      startDate,
+      endDate,
+      selectedMonth,
+      selectedYear,
+      compareMonth,
+      compareYear,
+    ])
 
+  // PARKUTEM_PHASE_06E_R1_FIX1_LINT_CLEANUP
+  // loadReportsData is stable via useCallback; filter reload is deferred one event-loop tick.
   // =====================================================
   // LOAD WHEN FILTERS CHANGE
   // =====================================================
 
   useEffect(() => {
-    loadReportsData()
-  }, [
-    startDate,
-    endDate,
-    selectedMonth,
-    selectedYear,
-    compareMonth,
-    compareYear,
-  ])
+    const loadTimer = window.setTimeout(() => {
+      void loadReportsData()
+    }, 0)
+
+    return () => window.clearTimeout(loadTimer)
+  }, [loadReportsData])
 
   // =====================================================
   // REALTIME REFRESH

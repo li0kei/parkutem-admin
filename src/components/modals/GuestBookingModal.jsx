@@ -1,3 +1,5 @@
+// PARKUTEM_PHASE_06C_R1_SOURCE_LOCKED
+// Provider-managed payment controls are read-only
 // =====================================================
 // IMPORTS
 // =====================================================
@@ -224,12 +226,18 @@ function GuestBookingModal({
       return
     }
 
-    const nextMode = mode === "create" || !booking ? "create" : "view"
+    const syncTimer = window.setTimeout(() => {
+      const nextMode = mode === "create" || !booking ? "create" : "view"
 
-    setActiveMode(nextMode)
-    setForm(buildInitialForm(booking))
-    setNotice(null)
-    setIsWorking(false)
+      setActiveMode(nextMode)
+      setForm(buildInitialForm(booking))
+      setNotice(null)
+      setIsWorking(false)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(syncTimer)
+    }
   }, [booking, isOpen, mode])
 
   const isCreateMode = activeMode === "create"
@@ -430,6 +438,13 @@ function GuestBookingModal({
   }
 
   async function handlePaymentStatusChange(value) {
+    if (booking?.providerManaged) {
+      showError(
+        "Payment status is controlled by the verified payment provider callback."
+      )
+      return
+    }
+
     if (!booking?.id || !onUpdatePaymentStatus) {
       showError("Payment status update is not connected yet.")
       return
@@ -736,15 +751,33 @@ function GuestBookingModal({
                     required
                   />
 
-                  <FormInput
-                    label="Parking Fee / Amount"
-                    type="number"
-                    value={form.parkingFee}
-                    onChange={(value) => updateFormValue("parkingFee", value)}
-                    min="0"
-                    step="0.01"
-                    required
-                  />
+                  {booking?.providerManaged ? (
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Parking Fee / Amount
+                      </span>
+
+                      <input
+                        type="number"
+                        value={form.parkingFee}
+                        disabled
+                        className="h-[52px] w-full cursor-not-allowed rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 outline-none opacity-80"
+                        title="The provider-linked payment amount is read-only."
+                      />
+                    </label>
+                  ) : (
+                    <FormInput
+                      label="Parking Fee / Amount"
+                      type="number"
+                      value={form.parkingFee}
+                      onChange={(value) =>
+                        updateFormValue("parkingFee", value)
+                      }
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  )}
                 </div>
 
                 <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-800">
@@ -758,14 +791,35 @@ function GuestBookingModal({
                 description="Email confirmation can only be sent when payment is Paid, booking is Confirmed, and ANPR access is Enabled."
               >
                 <div className="grid gap-4 md:grid-cols-3">
-                  <FormSelect
-                    label="Payment Status"
-                    value={form.paymentStatus}
-                    onChange={(value) =>
-                      updateFormValue("paymentStatus", value)
-                    }
-                    options={paymentStatusOptions}
-                  />
+                  {booking?.providerManaged ? (
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                        Payment Status
+                      </span>
+
+                      <select
+                        value={form.paymentStatus}
+                        disabled
+                        className="h-[52px] w-full cursor-not-allowed rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 outline-none opacity-80"
+                        title="Payment status is controlled by the verified provider callback."
+                      >
+                        {paymentStatusOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <FormSelect
+                      label="Payment Status"
+                      value={form.paymentStatus}
+                      onChange={(value) =>
+                        updateFormValue("paymentStatus", value)
+                      }
+                      options={paymentStatusOptions}
+                    />
+                  )}
 
                   <FormSelect
                     label="Booking Status"
@@ -888,7 +942,7 @@ function GuestBookingModal({
                     <DetailRow
                       icon={CreditCard}
                       label="Payment Method"
-                      value={booking?.paymentMethod || "Simulated"}
+                      value={booking?.paymentMethod || "-"}
                     />
 
                     <DetailRow
@@ -896,6 +950,34 @@ function GuestBookingModal({
                       label="Payment Reference"
                       value={booking?.paymentReference || "-"}
                     />
+
+                    {booking?.providerManaged && (
+                      <>
+                        <DetailRow
+                          icon={CreditCard}
+                          label="Payment Provider"
+                          value={booking?.paymentProvider || "-"}
+                        />
+
+                        <DetailRow
+                          icon={Receipt}
+                          label="Provider Bill ID"
+                          value={booking?.providerBillId || "-"}
+                        />
+
+                        <DetailRow
+                          icon={Receipt}
+                          label="Provider Status"
+                          value={booking?.providerStatus || "-"}
+                        />
+
+                        <DetailRow
+                          icon={Receipt}
+                          label="Provider Reference"
+                          value={booking?.providerReference || "-"}
+                        />
+                      </>
+                    )}
 
                     <DetailRow
                       icon={Receipt}
@@ -909,12 +991,30 @@ function GuestBookingModal({
                         Payment Status
                       </label>
 
+                      {booking?.providerManaged && (
+                        <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                          <p className="text-xs font-black text-emerald-800">
+                            Provider-managed payment
+                          </p>
+                          <p className="mt-1 text-xs font-semibold leading-5 text-emerald-700">
+                            {booking.paymentProvider || "Payment provider"} is
+                            the payment authority. Manual status changes are
+                            disabled.
+                          </p>
+                        </div>
+                      )}
+
                       <select
                         value={booking?.paymentStatus || "Pending"}
                         onChange={(event) =>
                           handlePaymentStatusChange(event.target.value)
                         }
-                        disabled={isWorking}
+                        disabled={isWorking || Boolean(booking?.providerManaged)}
+                        title={
+                          booking?.providerManaged
+                            ? "Payment status is controlled by the verified provider callback."
+                            : undefined
+                        }
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {paymentStatusOptions.map((option) => (

@@ -497,20 +497,38 @@ function buildVehiclePayload(payload, userPayload) {
 // =====================================================
 
 export async function fetchUniversityUsers() {
-  const { data, error } = await supabase
-    .from("university_users")
-    .select(UNIVERSITY_USER_SELECT)
-    .order("created_at", { ascending: false })
+  // PARKUTEM_PHASE_04A_FIX3_USERS_BATCH
+  // Supabase/PostgREST limits one response, so retrieve users in bounded ranges.
+  const batchSize = 500
+  const allUsers = []
 
-  if (error) {
-    console.error("Fetch university users error:", error)
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
 
-    throw new Error(
-      getSupabaseErrorMessage(error, "Failed to fetch university users.")
-    )
+    const { data, error } = await supabase
+      .from("university_users")
+      .select(UNIVERSITY_USER_SELECT)
+      .order("created_at", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch university users error:", error)
+
+      throw new Error(
+        getSupabaseErrorMessage(error, "Failed to fetch university users.")
+      )
+    }
+
+    const rows = Array.isArray(data) ? data : []
+
+    allUsers.push(...rows)
+
+    if (rows.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allUsers
 }
 
 // =====================================================
@@ -518,27 +536,60 @@ export async function fetchUniversityUsers() {
 // =====================================================
 
 async function fetchVehicleRecordsForUsers(universityIds) {
+  // PARKUTEM_PHASE_04A_FIX3_VEHICLES_BATCH
+  // Keep the IN filter bounded and paginate vehicle rows per ID group.
   const safeIds = [...new Set(universityIds.filter(Boolean))]
 
   if (!safeIds.length) {
     return []
   }
 
-  const { data, error } = await supabase
-    .from("vehicle_records")
-    .select(VEHICLE_RECORD_SELECT)
-    .in("university_id", safeIds)
-    .order("created_at", { ascending: false })
+  const idBatchSize = 100
+  const rowBatchSize = 500
+  const allVehicles = []
 
-  if (error) {
-    console.error("Fetch linked vehicle records error:", error)
-
-    throw new Error(
-      getSupabaseErrorMessage(error, "Failed to fetch linked vehicle records.")
+  for (
+    let idOffset = 0;
+    idOffset < safeIds.length;
+    idOffset += idBatchSize
+  ) {
+    const idBatch = safeIds.slice(
+      idOffset,
+      idOffset + idBatchSize
     )
+
+    for (let from = 0; ; from += rowBatchSize) {
+      const to = from + rowBatchSize - 1
+
+      const { data, error } = await supabase
+        .from("vehicle_records")
+        .select(VEHICLE_RECORD_SELECT)
+        .in("university_id", idBatch)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+
+      if (error) {
+        console.error("Fetch linked vehicle records error:", error)
+
+        throw new Error(
+          getSupabaseErrorMessage(
+            error,
+            "Failed to fetch linked vehicle records."
+          )
+        )
+      }
+
+      const rows = Array.isArray(data) ? data : []
+
+      allVehicles.push(...rows)
+
+      if (rows.length < rowBatchSize) {
+        break
+      }
+    }
   }
 
-  return data || []
+  return allVehicles
 }
 
 // =====================================================

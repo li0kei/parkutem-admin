@@ -1,13 +1,13 @@
-// =====================================================
+﻿// =====================================================
 // IMPORTS
 // =====================================================
 
 import { BrowserRouter, Navigate, Route, Routes } from "react-router"
 
 import Login from "./pages/Login"
+import ParkingManagement from "./pages/ParkingManagement"
 import Dashboard from "./pages/Dashboard"
 
-import ParkingBays from "./pages/ParkingBays"
 import ANPRLogs from "./pages/ANPRLogs"
 import Users from "./pages/Users"
 import Vehicles from "./pages/Vehicles"
@@ -44,8 +44,15 @@ function App() {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
-
-          <Route path="/parking-bays" element={<ParkingBays />} />
+          <Route path="/parking" element={<ParkingManagement />} />
+          <Route
+            path="/parking-bays"
+            element={<Navigate to="/parking?view=bays" replace />}
+          />
+          <Route
+            path="/parking-zones"
+            element={<Navigate to="/parking?view=zones" replace />}
+          />
 
           <Route
             path="/anpr-logs"
@@ -100,3 +107,5 @@ function App() {
 }
 
 export default App
+
+
