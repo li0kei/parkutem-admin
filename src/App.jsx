@@ -1,28 +1,29 @@
-﻿// =====================================================
+// =====================================================
 // IMPORTS
 // =====================================================
 
+import { lazy } from "react"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router"
 
 import Login from "./pages/Login"
-import ParkingManagement from "./pages/ParkingManagement"
-import Dashboard from "./pages/Dashboard"
-
-import ANPRLogs from "./pages/ANPRLogs"
-import Users from "./pages/Users"
-import Vehicles from "./pages/Vehicles"
-import Reservations from "./pages/Reservations"
-import GuestBookings from "./pages/GuestBookings"
-import Payments from "./pages/Payments"
-import Reports from "./pages/Reports"
-import Issues from "./pages/Issues"
-import Settings from "./pages/Settings"
-
 
 import ProtectedRoute from "./components/layout/ProtectedRoute"
 import AdminLayout from "./components/layout/AdminLayout"
 
+import { adminRouteLoaders } from "./routes/adminRouteLoaders"
 
+// PARKUTEM_ADMIN_PHASE_08_R1_ROUTE_CODE_SPLITTING
+const Dashboard = lazy(adminRouteLoaders.dashboard)
+const ParkingManagement = lazy(adminRouteLoaders.parking)
+const ANPRLogs = lazy(adminRouteLoaders.anprLogs)
+const Users = lazy(adminRouteLoaders.users)
+const Vehicles = lazy(adminRouteLoaders.vehicles)
+const Reservations = lazy(adminRouteLoaders.reservations)
+const GuestBookings = lazy(adminRouteLoaders.guestBookings)
+const Payments = lazy(adminRouteLoaders.payments)
+const Reports = lazy(adminRouteLoaders.reports)
+const Issues = lazy(adminRouteLoaders.issues)
+const Settings = lazy(adminRouteLoaders.settings)
 
 // =====================================================
 // APP ROUTES
@@ -45,59 +46,26 @@ function App() {
         >
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/parking" element={<ParkingManagement />} />
+
           <Route
             path="/parking-bays"
             element={<Navigate to="/parking?view=bays" replace />}
           />
+
           <Route
             path="/parking-zones"
             element={<Navigate to="/parking?view=zones" replace />}
           />
 
-          <Route
-            path="/anpr-logs"
-            element={<ANPRLogs />}
-          />
-
-          <Route
-            path="/users"
-            element={<Users />}
-          />
-
-          <Route
-            path="/vehicles"
-            element={<Vehicles />}
-          />
-
-          <Route
-            path="/reservations"
-            element={<Reservations />}
-          />
-
-          <Route
-            path="/guest-bookings"
-            element={<GuestBookings />}
-          />
-
-          <Route
-            path="/payments"
-            element={<Payments />}
-          />
-
-          <Route
-            path="/reports"
-            element={<Reports />}
-          />
-
-          <Route
-            path="/issues"
-            element={<Issues />}
-          />
-
-          <Route
-            path="/settings"
-            element={<Settings />}
-          />
+          <Route path="/anpr-logs" element={<ANPRLogs />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/vehicles" element={<Vehicles />} />
+          <Route path="/reservations" element={<Reservations />} />
+          <Route path="/guest-bookings" element={<GuestBookings />} />
+          <Route path="/payments" element={<Payments />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/issues" element={<Issues />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -107,5 +75,3 @@ function App() {
 }
 
 export default App
-
-

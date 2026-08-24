@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useDeferredValue } from "react"
 import {
   Car,
   CheckCircle,
@@ -16,6 +16,7 @@ import {
 import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
+import PaginationControls from "../components/common/PaginationControls"
 import StickerReviewModal from "../components/modals/StickerReviewModal"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
@@ -35,12 +36,15 @@ import {
 // VEHICLES & STICKER RECORDS PAGE
 // =====================================================
 
+const PAGE_SIZE = 50 // PARKUTEM_ADMIN_PHASE_08_R1_VEHICLES_PAGINATION
+
 function Vehicles() {
   const [vehicleData, setVehicleData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
   const [searchTerm, setSearchTerm] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
   const [selectedUserType, setSelectedUserType] = useState("All Types")
   const [selectedSticker, setSelectedSticker] = useState("All Stickers")
   const [selectedAnpr, setSelectedAnpr] = useState("All ANPR")
@@ -110,9 +114,11 @@ function Vehicles() {
   // FILTERED VEHICLES
   // =====================================================
 
+  const deferredSearchTerm = useDeferredValue(searchTerm)
+
   const filteredVehicles = useMemo(() => {
     return vehicleData.filter((vehicle) => {
-      const searchValue = searchTerm.toLowerCase()
+      const searchValue = deferredSearchTerm.toLowerCase()
 
       const matchesSearch =
         String(vehicle.plateNumber || "").toLowerCase().includes(searchValue) ||
@@ -135,7 +141,19 @@ function Vehicles() {
 
       return matchesSearch && matchesUserType && matchesSticker && matchesAnpr
     })
-  }, [vehicleData, searchTerm, selectedUserType, selectedSticker, selectedAnpr])
+  }, [vehicleData, deferredSearchTerm, selectedUserType, selectedSticker, selectedAnpr])
+
+  // =====================================================
+  // CLIENT RENDER PAGINATION
+  // =====================================================
+
+  const totalPages = Math.max(1, Math.ceil(filteredVehicles.length / PAGE_SIZE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+
+  const paginatedVehicles = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * PAGE_SIZE
+    return filteredVehicles.slice(startIndex, startIndex + PAGE_SIZE)
+  }, [filteredVehicles, safeCurrentPage])
 
   // =====================================================
   // SUMMARY COUNTS
@@ -231,6 +249,7 @@ function Vehicles() {
   // =====================================================
 
   function handleResetFilters() {
+    setCurrentPage(1)
     setSearchTerm("")
     setSelectedUserType("All Types")
     setSelectedSticker("All Stickers")
@@ -341,7 +360,7 @@ function Vehicles() {
 
             <SearchInput
               value={searchTerm}
-              onChange={setSearchTerm}
+              onChange={(value) => { setSearchTerm(value); setCurrentPage(1) }}
               placeholder="Search plate, owner, model, color, ID..."
             />
           </div>
@@ -349,21 +368,21 @@ function Vehicles() {
           <FilterSelect
             label="User Type"
             value={selectedUserType}
-            onChange={setSelectedUserType}
+            onChange={(value) => { setSelectedUserType(value); setCurrentPage(1) }}
             options={vehicleUserTypeOptions}
           />
 
           <FilterSelect
             label="Sticker"
             value={selectedSticker}
-            onChange={setSelectedSticker}
+            onChange={(value) => { setSelectedSticker(value); setCurrentPage(1) }}
             options={vehicleStickerStatusOptions}
           />
 
           <FilterSelect
             label="ANPR"
             value={selectedAnpr}
-            onChange={setSelectedAnpr}
+            onChange={(value) => { setSelectedAnpr(value); setCurrentPage(1) }}
             options={vehicleAnprStatusOptions}
           />
 
@@ -414,7 +433,7 @@ function Vehicles() {
             </thead>
 
             <tbody>
-              {filteredVehicles.map((vehicle) => (
+              {paginatedVehicles.map((vehicle) => (
                 <tr
                   key={vehicle.id}
                   className="border-b border-slate-100 transition even:bg-slate-50/45 hover:bg-cyan-50/50"
@@ -505,7 +524,7 @@ function Vehicles() {
           </p>
         </div>
 
-        {filteredVehicles.map((vehicle) => (
+        {paginatedVehicles.map((vehicle) => (
           <div
             key={vehicle.id}
             className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm"
@@ -561,6 +580,15 @@ function Vehicles() {
       {/* =====================================================
           STICKER REVIEW MODAL
           ===================================================== */}
+
+      <PaginationControls
+        currentPage={safeCurrentPage}
+        totalPages={totalPages}
+        totalItems={filteredVehicles.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+        itemLabel="vehicles"
+      />
 
       <StickerReviewModal
         vehicle={selectedVehicle}

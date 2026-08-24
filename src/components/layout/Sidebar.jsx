@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { logoutAdmin } from "../../utils/auth"
+import { prefetchAdminRoute } from "../../routes/adminRouteLoaders"
 
 // =====================================================
 // SIDEBAR NAVIGATION ITEMS
@@ -183,6 +184,8 @@ function Sidebar({ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen })
                 key={item.path}
                 to={item.path}
                 onClick={handleNavClick}
+                onMouseEnter={() => prefetchAdminRoute(item.path)}
+                onFocus={() => prefetchAdminRoute(item.path)}
                 className={({ isActive }) =>
                   `group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition
                   ${

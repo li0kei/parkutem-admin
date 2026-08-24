@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, useDeferredValue } from "react"
 import {
   BadgeCheck,
   Briefcase,
@@ -20,6 +20,7 @@ import {
 import FilterSelect from "../components/common/FilterSelect"
 import SearchInput from "../components/common/SearchInput"
 import StatusBadge from "../components/common/StatusBadge"
+import PaginationControls from "../components/common/PaginationControls"
 import UserDetailModal from "../components/modals/UserDetailModal"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
@@ -46,6 +47,7 @@ import {
 const DEFAULT_ROLE = "All Roles"
 const DEFAULT_STICKER = "All Stickers"
 const DEFAULT_ACCOUNT = "All Accounts"
+const PAGE_SIZE = 50 // PARKUTEM_ADMIN_PHASE_08_R1_USERS_PAGINATION
 
 const REALTIME_TABLES = [
   "university_users",
@@ -102,6 +104,7 @@ function Users() {
   const [loadError, setLoadError] = useState("")
 
   const [searchTerm, setSearchTerm] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
   const [selectedRole, setSelectedRole] = useState(DEFAULT_ROLE)
   const [selectedSticker, setSelectedSticker] = useState(DEFAULT_STICKER)
   const [selectedAccount, setSelectedAccount] = useState(DEFAULT_ACCOUNT)
@@ -174,8 +177,10 @@ function Users() {
   // FILTERED USERS
   // =====================================================
 
+  const deferredSearchTerm = useDeferredValue(searchTerm)
+
   const filteredUsers = useMemo(() => {
-    const searchValue = searchTerm.trim().toLowerCase()
+    const searchValue = deferredSearchTerm.trim().toLowerCase()
 
     return userData.filter((user) => {
       const matchesSearch =
@@ -202,7 +207,19 @@ function Users() {
 
       return matchesSearch && matchesRole && matchesSticker && matchesAccount
     })
-  }, [userData, searchTerm, selectedRole, selectedSticker, selectedAccount])
+  }, [userData, deferredSearchTerm, selectedRole, selectedSticker, selectedAccount])
+
+  // =====================================================
+  // CLIENT RENDER PAGINATION
+  // =====================================================
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * PAGE_SIZE
+    return filteredUsers.slice(startIndex, startIndex + PAGE_SIZE)
+  }, [filteredUsers, safeCurrentPage])
 
   // =====================================================
   // SUMMARY COUNTS
@@ -405,6 +422,7 @@ function Users() {
   // =====================================================
 
   function handleResetFilters() {
+    setCurrentPage(1)
     setSearchTerm("")
     setSelectedRole(DEFAULT_ROLE)
     setSelectedSticker(DEFAULT_STICKER)
@@ -444,27 +462,36 @@ function Users() {
         selectedRole={selectedRole}
         selectedSticker={selectedSticker}
         selectedAccount={selectedAccount}
-        onSearchChange={setSearchTerm}
-        onRoleChange={setSelectedRole}
-        onStickerChange={setSelectedSticker}
-        onAccountChange={setSelectedAccount}
+        onSearchChange={(value) => { setSearchTerm(value); setCurrentPage(1) }}
+        onRoleChange={(value) => { setSelectedRole(value); setCurrentPage(1) }}
+        onStickerChange={(value) => { setSelectedSticker(value); setCurrentPage(1) }}
+        onAccountChange={(value) => { setSelectedAccount(value); setCurrentPage(1) }}
         onReset={handleResetFilters}
       />
 
       <DesktopUserTable
-        users={filteredUsers}
-        totalUsers={userData.length}
+        users={paginatedUsers}
+        totalUsers={filteredUsers.length}
         onAddUser={handleOpenCreateUser}
         onViewUser={handleOpenViewUser}
         onReset={handleResetFilters}
       />
 
       <MobileUserList
-        users={filteredUsers}
-        totalUsers={userData.length}
+        users={paginatedUsers}
+        totalUsers={filteredUsers.length}
         onAddUser={handleOpenCreateUser}
         onViewUser={handleOpenViewUser}
         onReset={handleResetFilters}
+      />
+
+      <PaginationControls
+        currentPage={safeCurrentPage}
+        totalPages={totalPages}
+        totalItems={filteredUsers.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+        itemLabel="accounts"
       />
 
       <UserDetailModal

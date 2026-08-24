@@ -593,6 +593,45 @@ async function fetchVehicleRecordsForUsers(universityIds) {
 }
 
 // =====================================================
+// FETCH ALL VEHICLE RECORDS FOR ADMIN LIST
+// =====================================================
+
+async function fetchAllVehicleRecordsForAdmin() {
+  const batchSize = 500
+  const allVehicles = []
+
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("vehicle_records")
+      .select(VEHICLE_RECORD_SELECT)
+      .order("created_at", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch full vehicle registry error:", error)
+
+      throw new Error(
+        getSupabaseErrorMessage(
+          error,
+          "Failed to fetch vehicle records for Admin users."
+        )
+      )
+    }
+
+    const rows = Array.isArray(data) ? data : []
+    allVehicles.push(...rows)
+
+    if (rows.length < batchSize) {
+      break
+    }
+  }
+
+  return allVehicles
+}
+
+// =====================================================
 // GROUP VEHICLES BY UNIVERSITY ID
 // =====================================================
 
@@ -615,10 +654,12 @@ function groupVehiclesByUniversityId(vehicleRecords) {
 // =====================================================
 
 export async function loadAdminUsers() {
-  const users = await fetchUniversityUsers()
-  const universityIds = users.map((user) => user.university_id)
+  // PARKUTEM_ADMIN_PHASE_08_R1_PARALLEL_USER_VEHICLE_LOAD
+  const [users, vehicleRecords] = await Promise.all([
+    fetchUniversityUsers(),
+    fetchAllVehicleRecordsForAdmin(),
+  ])
 
-  const vehicleRecords = await fetchVehicleRecordsForUsers(universityIds)
   const vehicleGroups = groupVehiclesByUniversityId(vehicleRecords)
 
   return users.map((user) =>

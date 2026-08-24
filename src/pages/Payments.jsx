@@ -573,7 +573,7 @@ const summary = useMemo(() => {
                     </p>
 
                     <p className="mt-1 text-xs font-semibold text-slate-400">
-                      {payment.userType} Ã¢â‚¬Â¢ {payment.vehiclePlate}
+                      {payment.userType} â€¢ {payment.vehiclePlate}
                     </p>
                   </td>
 
@@ -669,7 +669,7 @@ const summary = useMemo(() => {
 
             <div className="mt-5 grid gap-3">
               <MobileInfo label="Amount" value={`RM ${Math.abs(payment.amount).toFixed(2)}`} />
-              <MobileInfo label="User Type / Plate" value={`${payment.userType} Ã¢â‚¬Â¢ ${payment.vehiclePlate}`} />
+              <MobileInfo label="User Type / Plate" value={`${payment.userType} â€¢ ${payment.vehiclePlate}`} />
               <MobileInfo label="Reference" value={payment.reference} />
               <MobileInfo label="Date / Time" value={payment.dateTime} />
               <MobileInfo label="Source" value={payment.source} />

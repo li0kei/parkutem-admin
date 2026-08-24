@@ -138,6 +138,8 @@ function AdminNotificationBell() {
   // =====================================================
 
   useAdminRealtimeRefresh({
+    // PARKUTEM_ADMIN_PHASE_08_R1_NOTIFICATION_DEBOUNCE
+    debounceMs: 3000,
     channelName: "admin-notification-bell-realtime",
     tables: notificationRealtimeTables,
     onRefresh: () => {

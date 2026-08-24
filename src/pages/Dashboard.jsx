@@ -87,6 +87,7 @@ function Dashboard() {
   // =====================================================
 
   useAdminRealtimeRefresh({
+    debounceMs: 2500,
     channelName: "admin-dashboard-realtime",
     tables: dashboardRealtimeTables,
       onRefresh: () => {

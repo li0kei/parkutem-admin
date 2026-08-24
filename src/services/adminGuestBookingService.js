@@ -1079,7 +1079,7 @@ export function mapGuestBookingForAdmin(
     zone: zoneName,
     locationName,
     parkingAllocation: bayNumber
-      ? `${bayNumber} Ã¢â‚¬Â¢ ${zoneName}`
+      ? `${bayNumber} â€¢ ${zoneName}`
       : booking.bay_id
         ? "Assigned bay unavailable"
         : "Not assigned yet",

@@ -15,8 +15,9 @@ export function useAdminRealtimeRefresh({
   onRefresh,
   onStatusChange,
   enabled = true,
-  debounceMs = 500,
+  debounceMs = 1200,
 }) {
+  // PARKUTEM_ADMIN_PHASE_08_R1_REALTIME_SMOOTHNESS
   const refreshRef = useRef(onRefresh)
   const statusRef = useRef(onStatusChange)
 
@@ -43,18 +44,43 @@ export function useAdminRealtimeRefresh({
     }
 
     let isMounted = true
+    let hiddenPayload = null
+
+    function deliverRefresh(payload) {
+      if (!isMounted) {
+        return
+      }
+
+      if (document.visibilityState === "hidden") {
+        hiddenPayload = payload
+        return
+      }
+
+      hiddenPayload = null
+      refreshRef.current?.(payload)
+    }
+
+    function handleVisibilityChange() {
+      if (
+        !isMounted ||
+        document.visibilityState !== "visible" ||
+        !hiddenPayload
+      ) {
+        return
+      }
+
+      const payload = hiddenPayload
+      hiddenPayload = null
+      refreshRef.current?.(payload)
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
 
     const subscription = subscribeToAdminRealtime({
       channelName,
       tables: subscribedTables,
       debounceMs,
-      onChange: (payload) => {
-        if (!isMounted) {
-          return
-        }
-
-        refreshRef.current?.(payload)
-      },
+      onChange: deliverRefresh,
       onStatusChange: (statusInfo) => {
         if (!isMounted) {
           return
@@ -66,6 +92,8 @@ export function useAdminRealtimeRefresh({
 
     return () => {
       isMounted = false
+      hiddenPayload = null
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
       subscription.unsubscribe()
     }
   }, [channelName, debounceMs, enabled, tableKey])
