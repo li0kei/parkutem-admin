@@ -2,7 +2,7 @@
 // IMPORTS
 // =====================================================
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Camera,
   CheckCircle2,
@@ -52,14 +52,14 @@ function Settings() {
   // APPLY SETTINGS TO STATE
   // =====================================================
 
-  function applySettings(settings) {
+  const applySettings = useCallback((settings) => {
     setProfile(settings.adminProfile)
     setParking(settings.parkingPolicy)
     setReservation(settings.reservationPolicy)
     setGuest(settings.guestPolicy)
     setAnpr(settings.anprPolicy)
     setPreferences(settings.systemPreferences)
-  }
+  }, [])
 
   // =====================================================
   // GET CURRENT SETTINGS PAYLOAD
@@ -80,41 +80,47 @@ function Settings() {
   // LOAD SETTINGS FROM SUPABASE
   // =====================================================
 
-  async function loadSettings({ silent = false } = {}) {
-    if (!silent) {
-      setIsLoading(true)
-    }
-
-    setLoadError("")
-
-    try {
-      const settings = await loadAdminSettings()
-      applySettings(settings)
-    } catch (error) {
-      console.error("Failed to load settings:", error)
-      setLoadError(error.message || "Unable to load settings from Supabase.")
-    } finally {
+  const loadSettings = useCallback(
+    async ({ silent = false } = {}) => {
       if (!silent) {
-        setIsLoading(false)
+        setIsLoading(true)
       }
-    }
-  }
+
+      setLoadError("")
+
+      try {
+        const settings = await loadAdminSettings()
+        applySettings(settings)
+      } catch (error) {
+        console.error("Failed to load settings:", error)
+        setLoadError(error.message || "Unable to load settings from Supabase.")
+      } finally {
+        if (!silent) {
+          setIsLoading(false)
+        }
+      }
+    },
+    [applySettings]
+  )
 
   // =====================================================
   // INITIAL LOAD + REALTIME
   // =====================================================
 
   useEffect(() => {
-    loadSettings()
+    const initialLoadTimer = window.setTimeout(() => {
+      void loadSettings()
+    }, 0)
 
     const channel = subscribeToSettings(() => {
-      loadSettings({ silent: true })
+      void loadSettings({ silent: true })
     })
 
     return () => {
+      window.clearTimeout(initialLoadTimer)
       unsubscribeFromSettings(channel)
     }
-  }, [])
+  }, [loadSettings])
 
   // =====================================================
   // SAVE SETTINGS

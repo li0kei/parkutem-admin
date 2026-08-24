@@ -47,7 +47,9 @@ function RecentActivity({ refreshKey = 0 }) {
   // =====================================================
 
   useEffect(() => {
-    loadActivities()
+    void window.setTimeout(() => {
+      void loadActivities()
+    }, 0)
   }, [refreshKey])
 
   // =====================================================

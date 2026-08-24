@@ -106,70 +106,171 @@ function mapPaymentStatus(status, userType) {
   return "Pending"
 }
 
+
+// =====================================================
+// PARKUTEM_ADMIN_PHASE_07_R1_SESSION_HELPERS
+// =====================================================
+
+function getAnprEventTime(log) {
+  if (!log) return null
+
+  return (
+    (log.detection_type === "exit"
+      ? log.exit_time || log.detected_at
+      : log.entry_time || log.detected_at) ||
+    log.created_at ||
+    null
+  )
+}
+
+function getAnprSessionKey(log) {
+  return (
+    log.matched_guest_booking_id ||
+    log.matched_reservation_id ||
+    log.matched_vehicle_id ||
+    log.matched_user_id ||
+    log.normalized_plate_number ||
+    log.detected_plate_number ||
+    log.plate_number ||
+    log.id
+  )
+}
+
+function buildEntryLookup(logs = []) {
+  const byKey = new Map()
+
+  const ascending = [...logs].sort(
+    (a, b) =>
+      new Date(getAnprEventTime(a) || 0).getTime() -
+      new Date(getAnprEventTime(b) || 0).getTime()
+  )
+
+  for (const log of ascending) {
+    const key = getAnprSessionKey(log)
+    const type = String(log.detection_type || "").toLowerCase()
+    const decision = String(log.access_decision || "").toLowerCase()
+
+    if (type === "entry" && decision === "allowed") {
+      byKey.set(key, getAnprEventTime(log))
+      continue
+    }
+
+    if (type === "exit" && decision === "allowed") {
+      log.__paired_entry_time = byKey.get(key) || null
+      byKey.delete(key)
+    }
+  }
+
+  return logs
+}
+
+function resolveProductionProcessingMode(log) {
+  const requested = String(
+    log.raw_payload?.requested_processing_mode || ""
+  ).trim()
+
+  const apiMode = String(log.raw_payload?.api_mode || "").trim()
+  const source = String(log.source_device || "").trim().toLowerCase()
+
+  if (
+    requested === "tapo_rtsp_bridge_v1" ||
+    source.startsWith("tapo_c211_")
+  ) {
+    return "Tapo RTSP + YOLO/PaddleOCR"
+  }
+
+  if (apiMode.includes("production_anpr")) {
+    return "Production ANPR"
+  }
+
+  if (log.processing_mode === "phone_realtime") {
+    return "Phone Realtime"
+  }
+
+  return log.processing_mode || requested || "-"
+}
+
 // =====================================================
 // FETCH ANPR LOGS
 // =====================================================
 
 export async function fetchAnprLogs() {
-  const { data, error } = await supabase
-    .from("anpr_logs")
-    .select(
-      `
-      id,
-      detected_plate_number,
-      normalized_plate_number,
-      confidence_score,
-      user_type,
-      detection_type,
-      zone_id,
-      bay_id,
-      matched_user_id,
-      matched_vehicle_id,
-      matched_guest_booking_id,
-      matched_reservation_id,
-      access_status,
-      access_decision,
-      reason,
-      image_url,
-      source_device,
-      processing_mode,
-      detected_at,
-      created_at,
-      updated_at,
-      plate_number,
-      owner_name,
-      gate_location,
-      parking_zone,
-      confidence,
-      payment_status,
-      remarks,
-      entry_time,
-      exit_time,
-      raw_payload,
-      model_name,
-      model_version,
-      ocr_engine,
-      ocr_raw_text,
-      ocr_confidence,
-      yolo_confidence,
-      processing_time_ms,
-      guest_bookings (
-        booking_reference,
-        visitor_name,
-        payment_status,
-        booking_status,
-        anpr_access_status
-      )
-    `
-    )
-    .order("detected_at", { ascending: false })
+  // PARKUTEM_ADMIN_PHASE_07_R1_ANPR_BATCHING
+  const batchSize = 500
+  const allLogs = []
 
-  if (error) {
-    console.error("Fetch ANPR logs error:", error)
-    throw new Error(error.message || "Failed to fetch ANPR logs.")
+  for (let from = 0; ; from += batchSize) {
+    const to = from + batchSize - 1
+
+    const { data, error } = await supabase
+      .from("anpr_logs")
+      .select(
+        `
+        id,
+        detected_plate_number,
+        normalized_plate_number,
+        confidence_score,
+        user_type,
+        detection_type,
+        zone_id,
+        bay_id,
+        matched_user_id,
+        matched_vehicle_id,
+        matched_guest_booking_id,
+        matched_reservation_id,
+        access_status,
+        access_decision,
+        reason,
+        image_url,
+        source_device,
+        processing_mode,
+        detected_at,
+        created_at,
+        updated_at,
+        plate_number,
+        owner_name,
+        gate_location,
+        parking_zone,
+        confidence,
+        payment_status,
+        remarks,
+        entry_time,
+        exit_time,
+        raw_payload,
+        model_name,
+        model_version,
+        ocr_engine,
+        ocr_raw_text,
+        ocr_confidence,
+        yolo_confidence,
+        processing_time_ms,
+        guest_bookings (
+          booking_reference,
+          visitor_name,
+          payment_status,
+          booking_status,
+          anpr_access_status
+        )
+      `
+      )
+      .order("detected_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Fetch ANPR logs error:", error)
+      throw new Error(error.message || "Failed to fetch ANPR logs.")
+    }
+
+    const rows = data || []
+    allLogs.push(...rows)
+
+    if (rows.length < batchSize) {
+      break
+    }
   }
 
-  return data || []
+  return allLogs
 }
 
 // =====================================================
@@ -230,7 +331,10 @@ export function mapAnprLogForAdmin(log) {
     guestBooking?.visitor_name ||
     (userType === "Unknown" ? "-" : "Matched User")
 
-  const entryTime = log.entry_time || log.detected_at
+  const entryTime =
+    log.detection_type === "exit"
+      ? log.__paired_entry_time || null
+      : log.entry_time || log.detected_at
   const exitTime = log.exit_time
 
   const confidenceValue =
@@ -273,7 +377,7 @@ export function mapAnprLogForAdmin(log) {
         : "ANPR detection attempt recorded."),
 
     sourceDevice: log.source_device || "-",
-    processingMode: log.processing_mode || "-",
+    processingMode: resolveProductionProcessingMode(log),
 
     raw: log,
     source: "supabase",
@@ -285,7 +389,7 @@ export function mapAnprLogForAdmin(log) {
 // =====================================================
 
 export async function loadAdminAnprLogs() {
-  const logs = await fetchAnprLogs()
+  const logs = buildEntryLookup(await fetchAnprLogs())
 
   return logs.map(mapAnprLogForAdmin)
 }

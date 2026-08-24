@@ -77,7 +77,9 @@ function Dashboard() {
   // =====================================================
 
     useEffect(() => {
-      loadDashboardStats()
+      void window.setTimeout(() => {
+        void loadDashboardStats()
+      }, 0)
     }, [])
 
   // =====================================================

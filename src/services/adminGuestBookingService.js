@@ -863,7 +863,39 @@ export async function fetchGuestBookings() {
     }
   }
 
-  return allBookings
+  
+  const unresolvedBayIds = [
+    ...new Set(
+      allBookings
+        .filter((booking) => booking.bay_id && !booking.assigned_bay?.bay_code)
+        .map((booking) => booking.bay_id)
+    ),
+  ]
+
+  const bayCodeById = new Map()
+
+  for (let index = 0; index < unresolvedBayIds.length; index += 100) {
+    const ids = unresolvedBayIds.slice(index, index + 100)
+
+    const { data: bays, error: bayError } = await supabase
+      .from("parking_bays")
+      .select("id, bay_code")
+      .in("id", ids)
+
+    if (bayError) {
+      console.warn("Guest bay fallback lookup warning:", bayError.message)
+      break
+    }
+
+    ;(bays || []).forEach((bay) => {
+      bayCodeById.set(bay.id, bay.bay_code)
+    })
+  }
+
+  return allBookings.map((booking) => ({
+    ...booking,
+    __bay_code_fallback: bayCodeById.get(booking.bay_id) || null,
+  }))
 }
 
 // =====================================================
@@ -1004,6 +1036,7 @@ export async function fetchGuestAnprLogs() {
 // MAP GUEST BOOKING FOR EXISTING ADMIN UI
 // =====================================================
 
+// PARKUTEM_ADMIN_PHASE_07_R1_GUEST_BAY_FALLBACK
 export function mapGuestBookingForAdmin(
   booking,
   guestAnprLogMap = {},
@@ -1013,7 +1046,10 @@ export function mapGuestBookingForAdmin(
 
   const zoneName = booking.parking_zones?.zone_name || "Zone A"
   const locationName = booking.parking_zones?.location_name || "-"
-  const bayNumber = booking.assigned_bay?.bay_code || null
+  const bayNumber =
+    booking.assigned_bay?.bay_code ||
+    booking.__bay_code_fallback ||
+    null
 
   const paymentProvider = cleanText(
     paymentTransaction?.payment_provider

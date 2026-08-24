@@ -10,7 +10,6 @@ import {
   Clock3,
   MoreHorizontal,
   Radio,
-  ShieldCheck,
   XCircle,
 } from "lucide-react"
 
@@ -83,7 +82,9 @@ function Vehicles() {
   // =====================================================
 
   useEffect(() => {
-    loadVehicles()
+    void window.setTimeout(() => {
+      void loadVehicles()
+    }, 0)
   }, [])
 
   // =====================================================

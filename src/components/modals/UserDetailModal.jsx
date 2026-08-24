@@ -242,11 +242,13 @@ function UserDetailModal({
 
     const nextMode = resolveInitialMode(mode, user)
 
-    setActiveMode(nextMode)
-    setForm(nextMode === "create" ? getEmptyForm() : getInitialForm(user))
-    setErrorMessage("")
-    setIsSubmitting(false)
-  }, [isOpen, mode, user?.id])
+    void window.setTimeout(() => {
+      setActiveMode(nextMode)
+      setForm(nextMode === "create" ? getEmptyForm() : getInitialForm(user))
+      setErrorMessage("")
+      setIsSubmitting(false)
+    }, 0)
+  }, [isOpen, mode, user])
 
   if (!isOpen) {
     return null

@@ -150,7 +150,9 @@ function Users() {
   // =====================================================
 
   useEffect(() => {
-    loadUsers()
+    void window.setTimeout(() => {
+      void loadUsers()
+    }, 0)
   }, [loadUsers])
 
   // =====================================================

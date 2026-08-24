@@ -217,7 +217,9 @@ function Issues() {
   // =====================================================
 
   useEffect(() => {
-    loadIssues()
+    void window.setTimeout(() => {
+      void loadIssues()
+    }, 0)
   }, [])
 
   // =====================================================
@@ -1174,8 +1176,10 @@ function IssueDetailModal({
   const [formError, setFormError] = useState("")
 
   useEffect(() => {
-    setFormData(buildEditFormFromTicket(ticket))
-    setFormError("")
+    void window.setTimeout(() => {
+      setFormData(buildEditFormFromTicket(ticket))
+      setFormError("")
+    }, 0)
   }, [ticket])
 
   function updateField(field, value) {

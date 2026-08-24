@@ -33,7 +33,12 @@ export function useAdminRealtimeRefresh({
   }, [tables])
 
   useEffect(() => {
-    if (!enabled || !channelName || !Array.isArray(tables) || tables.length === 0) {
+    const subscribedTables = tableKey
+      .split("|")
+      .map((table) => table.trim())
+      .filter(Boolean)
+
+    if (!enabled || !channelName || subscribedTables.length === 0) {
       return undefined
     }
 
@@ -41,7 +46,7 @@ export function useAdminRealtimeRefresh({
 
     const subscription = subscribeToAdminRealtime({
       channelName,
-      tables,
+      tables: subscribedTables,
       debounceMs,
       onChange: (payload) => {
         if (!isMounted) {
@@ -63,5 +68,5 @@ export function useAdminRealtimeRefresh({
       isMounted = false
       subscription.unsubscribe()
     }
-  }, [enabled, channelName, tableKey, debounceMs])
+  }, [channelName, debounceMs, enabled, tableKey])
 }

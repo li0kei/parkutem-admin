@@ -833,6 +833,7 @@ export async function loadRecentDashboardActivities() {
 // =====================================================
 
 export async function loadBayAvailabilityByZoneData() {
+  // PARKUTEM_ADMIN_PHASE_07_R1_DYNAMIC_ZONE_OCCUPANCY
   const { data, error } = await supabase
     .from("parking_bays")
     .select(
@@ -852,51 +853,40 @@ export async function loadBayAvailabilityByZoneData() {
     throw new Error(error.message || "Failed to load bay availability by zone.")
   }
 
-  const zoneMap = {
-    "Zone A": {
-      zone: "Zone A",
-      available: 0,
-      unavailable: 0,
-      total: 0,
-    },
-    "Zone B": {
-      zone: "Zone B",
-      available: 0,
-      unavailable: 0,
-      total: 0,
-    },
-    "Zone C": {
-      zone: "Zone C",
-      available: 0,
-      unavailable: 0,
-      total: 0,
-    },
-    "Zone D": {
-      zone: "Zone D",
-      available: 0,
-      unavailable: 0,
-      total: 0,
-    },
-  }
+  const zoneMap = new Map()
 
   ;(data || []).forEach((bay) => {
-    const zoneName = bay.parking_zones?.zone_name || "Unassigned"
+    const zone = bay.parking_zones || {}
+    const zoneName =
+      zone.zone_name ||
+      zone.zone_code ||
+      "Unassigned"
 
-    if (!zoneMap[zoneName]) {
-      return
+    if (!zoneMap.has(zoneName)) {
+      zoneMap.set(zoneName, {
+        zone: zoneName,
+        available: 0,
+        unavailable: 0,
+        total: 0,
+      })
     }
 
-    zoneMap[zoneName].total += 1
+    const current = zoneMap.get(zoneName)
+    current.total += 1
 
     if (bay.status === "available") {
-      zoneMap[zoneName].available += 1
-      return
+      current.available += 1
+    } else {
+      current.unavailable += 1
     }
-
-    zoneMap[zoneName].unavailable += 1
   })
 
-  return Object.values(zoneMap)
+  return [...zoneMap.values()].sort((a, b) =>
+    String(a.zone).localeCompare(String(b.zone), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  )
 }
 
 // =====================================================

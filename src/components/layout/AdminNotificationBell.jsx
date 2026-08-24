@@ -128,7 +128,9 @@ function AdminNotificationBell() {
   // =====================================================
 
   useEffect(() => {
-    loadNotifications()
+    void window.setTimeout(() => {
+      void loadNotifications()
+    }, 0)
   }, [])
 
   // =====================================================

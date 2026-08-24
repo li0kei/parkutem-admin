@@ -152,7 +152,9 @@ function ParkingBays() {
   // =====================================================
 
   useEffect(() => {
-    loadBays()
+    void window.setTimeout(() => {
+      void loadBays()
+    }, 0)
   }, [loadBays])
 
   // =====================================================
@@ -190,7 +192,9 @@ function ParkingBays() {
 
   useEffect(() => {
     if (!zoneFilterOptions.includes(selectedZone)) {
-      setSelectedZone(DEFAULT_ZONE)
+      void window.setTimeout(() => {
+        setSelectedZone(DEFAULT_ZONE)
+      }, 0)
     }
   }, [selectedZone, zoneFilterOptions])
 

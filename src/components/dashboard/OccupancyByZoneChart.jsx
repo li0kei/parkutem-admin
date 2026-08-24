@@ -117,7 +117,9 @@ function OccupancyByZoneChart({ refreshKey = 0 }) {
   // =====================================================
 
   useEffect(() => {
-    loadChartData()
+    void window.setTimeout(() => {
+      void loadChartData()
+    }, 0)
   }, [refreshKey])
 
   // =====================================================
