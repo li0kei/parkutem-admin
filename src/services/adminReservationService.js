@@ -308,9 +308,47 @@ export function calculateAfter7ParkingFee(startValue, endValue) {
   return roundMoney(payableHours * AFTER_7_RATE_PER_HOUR)
 }
 
-export function calculateReservationFees(startValue, endValue) {
-  const reservationFee = RESERVATION_FEE_AMOUNT
-  const after7ParkingFee = calculateAfter7ParkingFee(startValue, endValue)
+function calculateStudentAfter7ParkingFee(startValue, endValue) {
+  // PARKUTEM_STUDENT_PRICING_V1
+  // Student rule: only 19:00-24:00 is chargeable at RM1/hour.
+  const start = new Date(startValue)
+  const end = new Date(endValue)
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error("Invalid reservation date/time.")
+  }
+
+  if (end <= start) {
+    throw new Error("Reservation end time must be later than start time.")
+  }
+
+  let totalPaidMinutes = 0
+  const currentDay = new Date(start)
+  currentDay.setHours(0, 0, 0, 0)
+
+  while (currentDay < end) {
+    const nextDay = new Date(currentDay)
+    nextDay.setDate(nextDay.getDate() + 1)
+
+    const eveningStart = new Date(currentDay)
+    eveningStart.setHours(19, 0, 0, 0)
+
+    const eveningEnd = new Date(nextDay)
+    eveningEnd.setHours(0, 0, 0, 0)
+
+    totalPaidMinutes += getOverlapMinutes(start, end, eveningStart, eveningEnd)
+    currentDay.setDate(currentDay.getDate() + 1)
+  }
+
+  return roundMoney((totalPaidMinutes / 60) * AFTER_7_RATE_PER_HOUR)
+}
+
+export function calculateReservationFees(startValue, endValue, userType = null) {
+  const isStudent = String(userType || "").trim().toLowerCase() === "student"
+  const reservationFee = isStudent ? 0 : RESERVATION_FEE_AMOUNT
+  const after7ParkingFee = isStudent
+    ? calculateStudentAfter7ParkingFee(startValue, endValue)
+    : calculateAfter7ParkingFee(startValue, endValue)
 
   return {
     reservationFee: roundMoney(reservationFee),
@@ -418,9 +456,13 @@ export function mapReservationForAdmin(reservation) {
     totalFee: roundMoney(reservationFee + after7Fee),
 
     parkingFeeRule:
-      after7Fee > 0
-        ? "After 7PM parking fee applied"
-        : "No after-7PM parking fee recorded",
+      String(reservation.user_type || "").toLowerCase() === "student"
+        ? after7Fee > 0
+          ? "Student rate: RM1/hour after 7PM"
+          : "Student parking is free before 7PM"
+        : after7Fee > 0
+          ? "After 7PM parking fee applied"
+          : "No after-7PM parking fee recorded",
 
     paymentMethod: reservation.payment_method || "wallet",
     status: mapStatus(reservation.status),
@@ -880,7 +922,7 @@ async function buildReservationPayload(inputPayload, existingReservation = null)
 
   ensureVehicleBelongsToUser(user, vehicle)
 
-  const fees = calculateReservationFees(startIso, endIso)
+  const fees = calculateReservationFees(startIso, endIso, user.role)
 
   return {
     user,

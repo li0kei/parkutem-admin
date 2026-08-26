@@ -206,7 +206,7 @@ function ReservationDetailModal({
                   </p>
 
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    Fixed reservation fee + after 7PM reserved time fee.
+                    Students: no fixed reservation fee; RM1/hour after 7PM. Staff: existing fee rules apply.
                   </p>
                 </div>
 
@@ -219,7 +219,7 @@ function ReservationDetailModal({
                 <FeeRow
                   label="Reservation Fee"
                   value={`RM ${formatMoney(reservation.reservationFee)}`}
-                  note="Fixed one-time reservation fee"
+                  note={reservation.userType === "Student" ? "No fixed reservation fee for students" : "Fixed staff reservation fee"}
                 />
 
                 <FeeRow

@@ -771,12 +771,11 @@ function Reservations() {
           </div>
 
           <h3 className="text-lg font-black text-slate-950">
-            Fixed Reservation Fee
+            Student / Staff Reservation Fee
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Student/staff reservation fee is charged once when booking a bay. It
-            does not depend on reservation duration.
+            Students: no fixed reservation fee. Staff retain the existing fixed fee.
           </p>
 
           <p className="mt-4 text-2xl font-black text-cyan-700">
@@ -784,7 +783,7 @@ function Reservations() {
           </p>
 
           <p className="mt-1 text-xs font-bold text-slate-500">
-            Total reservation fee recorded
+            Staff reservation fee recorded
           </p>
         </div>
 
@@ -798,8 +797,7 @@ function Reservations() {
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Student/staff normal parking is free from 7AM to 7PM. After 7PM,
-            parking fee is charged separately based on reserved time.
+            Students are free before 7PM and pay RM1/hour after 7PM based on reserved time. Staff retain the existing parking fee rule.
           </p>
 
           <p className="mt-4 text-2xl font-black text-violet-700">
@@ -872,7 +870,7 @@ function Reservations() {
 
           <div className="flex items-center gap-3">
             <span className="hidden rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700 xl:inline-flex">
-              Fixed Fee + After 7PM Rule
+              Student Free + After 7PM Rule
             </span>
 
             <button
@@ -1201,19 +1199,22 @@ function ReservationFormModal({
       return {
         ...calculateReservationFees(
           form.reservationStartAt,
-          form.reservationEndAt
+          form.reservationEndAt,
+          selectedUser?.userType
         ),
         error: "",
       }
     } catch (feeError) {
       return {
-        reservationFee: 2,
+        reservationFee:
+          selectedUser?.userType?.toLowerCase() === "student" ? 0 : 2,
         after7ParkingFee: 0,
-        totalAmount: 2,
+        totalAmount:
+          selectedUser?.userType?.toLowerCase() === "student" ? 0 : 2,
         error: feeError.message || "Unable to calculate fee.",
       }
     }
-  }, [form.reservationStartAt, form.reservationEndAt])
+  }, [form.reservationStartAt, form.reservationEndAt, selectedUser])
 
   if (!isOpen) {
     return null

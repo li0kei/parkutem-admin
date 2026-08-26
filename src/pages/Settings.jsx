@@ -357,12 +357,12 @@ function Settings() {
 
         <SettingsCard
           title="Reservation Policy"
-          subtitle="Reservation fee is a fixed one-time fee and does not depend on parking duration."
+          subtitle="Students have no fixed reservation fee. This value remains the staff reservation fee."
           icon={Wallet}
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <TextInput
-              label="Reservation Fee (RM)"
+              label="Staff Reservation Fee (RM)"
               type="number"
               value={reservation.reservationFee}
               onChange={(value) =>
