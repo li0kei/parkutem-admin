@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   UserRound,
-  Wallet,
 } from "lucide-react"
 
 import {
@@ -196,7 +195,7 @@ function Settings() {
               </h2>
 
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                Manage administrator profile, parking fee rules, reservation
+                Manage administrator profile, UTeM parking access, reservation
                 policy, guest access, ANPR checks, and notification preferences.
               </p>
             </div>
@@ -295,95 +294,57 @@ function Settings() {
         </SettingsCard>
 
         <SettingsCard
-          title="Parking Fee Policy"
-          subtitle="Student/staff normal parking is free from 7AM to 7PM. After 7PM, parking fee is charged based on actual usage."
+          title="UTeM Parking Policy"
+          subtitle="Student and Staff parking is FREE 24/7. There is no after-7PM parking charge."
           icon={ParkingCircle}
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextInput
-              label="Free Parking Start"
-              type="time"
-              value={parking.freeStartTime}
-              onChange={(value) =>
-                setParking({ ...parking, freeStartTime: value })
-              }
+            <PolicyValue
+              label="Student Parking"
+              value="FREE 24/7"
+              description="No parking fee at any time."
             />
 
-            <TextInput
-              label="Free Parking End"
-              type="time"
-              value={parking.freeEndTime}
-              onChange={(value) =>
-                setParking({ ...parking, freeEndTime: value })
-              }
+            <PolicyValue
+              label="Staff Parking"
+              value="FREE 24/7"
+              description="No parking fee at any time."
             />
 
-            <TextInput
-              label="After 7PM Rate (RM)"
-              type="number"
-              value={parking.afterHourRate}
-              onChange={(value) =>
-                setParking({ ...parking, afterHourRate: Number(value) })
-              }
+            <PolicyValue
+              label="After 7PM Rate"
+              value="RM 0.00"
+              description="No after-hours charge for UTeM users."
             />
 
-            <TextInput
-              label="Rate Unit"
-              value={parking.afterHourRateUnit}
-              onChange={(value) =>
-                setParking({ ...parking, afterHourRateUnit: value })
-              }
-            />
-
-            <TextInput
-              label="Max Daily Charge (RM)"
-              type="number"
-              value={parking.maxDailyCharge}
-              onChange={(value) =>
-                setParking({ ...parking, maxDailyCharge: Number(value) })
-              }
-            />
-
-            <TextInput
-              label="Grace Period (Minutes)"
-              type="number"
-              value={parking.gracePeriodMinutes}
-              onChange={(value) =>
-                setParking({ ...parking, gracePeriodMinutes: Number(value) })
-              }
+            <PolicyValue
+              label="Wallet Deduction"
+              value="Disabled"
+              description="UTeM parking does not deduct wallet balance."
             />
           </div>
         </SettingsCard>
 
         <SettingsCard
           title="Reservation Policy"
-          subtitle="Students have no reservation or parking fee. This value remains the staff reservation fee."
-          icon={Wallet}
+          subtitle="Student and Staff reservations are FREE 24/7. Operational reservation limits remain configurable."
+          icon={Clock}
         >
+          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            <PolicyValue
+              label="Student Reservation"
+              value="FREE"
+              description="No reservation fee."
+            />
+
+            <PolicyValue
+              label="Staff Reservation"
+              value="FREE"
+              description="No reservation fee."
+            />
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextInput
-              label="Staff Reservation Fee (RM)"
-              type="number"
-              value={reservation.reservationFee}
-              onChange={(value) =>
-                setReservation({
-                  ...reservation,
-                  reservationFee: Number(value),
-                })
-              }
-            />
-
-            <TextInput
-              label="Fee Type"
-              value={reservation.reservationFeeType}
-              onChange={(value) =>
-                setReservation({
-                  ...reservation,
-                  reservationFeeType: value,
-                })
-              }
-            />
-
             <TextInput
               label="Max Reservation Hours"
               type="number"
@@ -638,15 +599,15 @@ function Settings() {
 
         <div className="grid gap-4 lg:grid-cols-3">
           <PolicySummaryItem
-            icon={Clock}
-            title="Student/Staff Free Parking"
-            description={`Normal parking is free from ${parking.freeStartTime} to ${parking.freeEndTime}.`}
+            icon={ParkingCircle}
+            title="Student/Staff Parking"
+            description="UTeM Student and Staff parking is FREE 24/7."
           />
 
           <PolicySummaryItem
-            icon={Wallet}
-            title="After 7PM Parking Fee"
-            description={`After free hours, parking is charged RM ${parking.afterHourRate} ${parking.afterHourRateUnit}.`}
+            icon={Clock}
+            title="Reservation & After 7PM"
+            description="Reservation fee and after-7PM parking fee are both RM 0.00 for UTeM users."
           />
 
           <PolicySummaryItem
@@ -708,6 +669,25 @@ function TextInput({ label, value, onChange, type = "text" }) {
   )
 }
 
+// =====================================================
+// POLICY VALUE
+// =====================================================
+
+function PolicyValue({ label, value, description }) {
+  return (
+    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+        {label}
+      </p>
+
+      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+
+      <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+        {description}
+      </p>
+    </div>
+  )
+}
 // =====================================================
 // TOGGLE ROW
 // =====================================================
