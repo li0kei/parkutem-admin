@@ -68,14 +68,3 @@ export const reservationFormStatusOptions = [
     value: "cancelled",
   },
 ]
-
-// =====================================================
-// PAYMENT CONSTANTS
-// =====================================================
-
-export const reservationPaymentRule = {
-  reservationFee: 2,
-  paymentType: "reservation_fee",
-  paymentMethod: "wallet",
-  paymentStatus: "paid",
-}
