@@ -228,40 +228,17 @@ function isGuestRevenueType(type) {
   )
 }
 
-function isReservationRevenueType(type) {
-  return ["reservation_fee", "reservation"].includes(
-    normalizeReportPaymentType(type)
-  )
-}
-
-function isAfter7RevenueType(type) {
-  return ["parking_fee", "after_7_parking_fee", "after_7"].includes(
-    normalizeReportPaymentType(type)
-  )
-}
-
-function isReservationRelatedPayment(type) {
-  return isReservationRevenueType(type) || isAfter7RevenueType(type)
-}
-
-function summarizeReportRevenue(payments = [], reservations = []) {
-  let reservation = 0
-  let parking = 0
+function summarizeReportRevenue(payments = []) {
   let guest = 0
   let refund = 0
 
-  const reservationIdsWithTransactions = new Set()
-
   payments.forEach((payment) => {
+    if (!payment.guest_booking_id) {
+      return
+    }
+
     const type = normalizeReportPaymentType(payment.payment_type)
     const amount = Number(payment.amount || 0)
-
-    if (
-      payment.reservation_id &&
-      isReservationRelatedPayment(type)
-    ) {
-      reservationIdsWithTransactions.add(payment.reservation_id)
-    }
 
     if (
       payment.payment_status === "refunded" ||
@@ -277,63 +254,32 @@ function summarizeReportRevenue(payments = [], reservations = []) {
 
     if (isGuestRevenueType(type)) {
       guest += amount
-      return
     }
-
-    if (isReservationRevenueType(type)) {
-      reservation += amount
-      return
-    }
-
-    if (isAfter7RevenueType(type)) {
-      parking += amount
-    }
-
-    // wallet_topup / wallet_top_up / topup intentionally excluded.
   })
-
-  reservations.forEach((reservationRow) => {
-    if (
-      reservationIdsWithTransactions.has(reservationRow.id) ||
-      reservationRow.status === "cancelled"
-    ) {
-      return
-    }
-
-    reservation += Number(reservationRow.reservation_fee || 0)
-    parking += Number(reservationRow.after_7_parking_fee || 0)
-  })
-
-  const totalRevenue = reservation + parking + guest
 
   return {
-    reservation: Number(reservation.toFixed(2)),
-    parking: Number(parking.toFixed(2)),
     guest: Number(guest.toFixed(2)),
     refund: Number(refund.toFixed(2)),
-    totalRevenue: Number(totalRevenue.toFixed(2)),
+    totalRevenue: Number(guest.toFixed(2)),
   }
 }
 
-function createRevenueTrendData(payments, reservations) {
+function createRevenueTrendData(payments) {
   const buckets = {
-    Mon: { label: "Mon", reservation: 0, parking: 0, guest: 0, refund: 0 },
-    Tue: { label: "Tue", reservation: 0, parking: 0, guest: 0, refund: 0 },
-    Wed: { label: "Wed", reservation: 0, parking: 0, guest: 0, refund: 0 },
-    Thu: { label: "Thu", reservation: 0, parking: 0, guest: 0, refund: 0 },
-    Fri: { label: "Fri", reservation: 0, parking: 0, guest: 0, refund: 0 },
-    Sat: { label: "Sat", reservation: 0, parking: 0, guest: 0, refund: 0 },
-    Sun: { label: "Sun", reservation: 0, parking: 0, guest: 0, refund: 0 },
+    Mon: { label: "Mon", guest: 0, refund: 0 },
+    Tue: { label: "Tue", guest: 0, refund: 0 },
+    Wed: { label: "Wed", guest: 0, refund: 0 },
+    Thu: { label: "Thu", guest: 0, refund: 0 },
+    Fri: { label: "Fri", guest: 0, refund: 0 },
+    Sat: { label: "Sat", guest: 0, refund: 0 },
+    Sun: { label: "Sun", guest: 0, refund: 0 },
   }
 
-  const reservationIdsWithTransactions = new Set(
-    payments
-      .filter((payment) => isReservationRelatedPayment(payment.payment_type))
-      .map((payment) => payment.reservation_id)
-      .filter(Boolean)
-  )
-
   payments.forEach((payment) => {
+    if (!payment.guest_booking_id) {
+      return
+    }
+
     const label = getDayLabel(getPaymentEventAt(payment))
 
     if (!label || !buckets[label]) {
@@ -357,46 +303,11 @@ function createRevenueTrendData(payments, reservations) {
 
     if (isGuestRevenueType(type)) {
       buckets[label].guest += amount
-      return
     }
-
-    if (isReservationRevenueType(type)) {
-      buckets[label].reservation += amount
-      return
-    }
-
-    if (isAfter7RevenueType(type)) {
-      buckets[label].parking += amount
-    }
-  })
-
-  reservations.forEach((reservationRow) => {
-    if (
-      reservationIdsWithTransactions.has(reservationRow.id) ||
-      reservationRow.status === "cancelled"
-    ) {
-      return
-    }
-
-    const label = getDayLabel(reservationRow.created_at)
-
-    if (!label || !buckets[label]) {
-      return
-    }
-
-    buckets[label].reservation += Number(
-      reservationRow.reservation_fee || 0
-    )
-
-    buckets[label].parking += Number(
-      reservationRow.after_7_parking_fee || 0
-    )
   })
 
   return Object.values(buckets).map((item) => ({
     ...item,
-    reservation: Number(item.reservation.toFixed(2)),
-    parking: Number(item.parking.toFixed(2)),
     guest: Number(item.guest.toFixed(2)),
     refund: Number(item.refund.toFixed(2)),
   }))
@@ -1020,11 +931,15 @@ function buildReportsData(rawData, filters) {
   const monthRange = getMonthRangeIso(selectedMonth, selectedYear)
   const compareRange = getMonthRangeIso(compareMonth, compareYear)
 
+  const guestPayments = rawData.payments.filter(
+    (item) => Boolean(item.guest_booking_id)
+  )
+
   const rangeGuestBookings = rawData.guestBookings.filter((item) =>
     isWithinRange(item.created_at, startIso, endIso)
   )
 
-  const rangePayments = rawData.payments.filter((item) =>
+  const rangePayments = guestPayments.filter((item) =>
     isWithinRange(getPaymentEventAt(item), startIso, endIso)
   )
 
@@ -1040,10 +955,7 @@ function buildReportsData(rawData, filters) {
     isWithinRange(item.created_at, startIso, endIso)
   )
 
-  const revenueSummary = summarizeReportRevenue(
-    rangePayments,
-    rangeReservations
-  )
+  const revenueSummary = summarizeReportRevenue(rangePayments)
 
   const totalRevenue = revenueSummary.totalRevenue
 
@@ -1080,14 +992,6 @@ function buildReportsData(rawData, filters) {
 
   const revenueBreakdownReportData = [
     {
-      name: "Reservation Fee",
-      value: revenueSummary.reservation,
-    },
-    {
-      name: "After 7PM Parking Fee",
-      value: revenueSummary.parking,
-    },
-    {
       name: "Guest Parking Fee",
       value: revenueSummary.guest,
     },
@@ -1105,7 +1009,7 @@ function buildReportsData(rawData, filters) {
     isWithinHalfOpenRange(item.created_at, monthRange.startIso, monthRange.endIso)
   )
 
-  const monthlyPayments = rawData.payments.filter((item) =>
+  const monthlyPayments = guestPayments.filter((item) =>
     isWithinHalfOpenRange(
       getPaymentEventAt(item),
       monthRange.startIso,
@@ -1129,7 +1033,7 @@ function buildReportsData(rawData, filters) {
     isWithinHalfOpenRange(item.created_at, compareRange.startIso, compareRange.endIso)
   )
 
-  const comparePayments = rawData.payments.filter((item) =>
+  const comparePayments = guestPayments.filter((item) =>
     isWithinHalfOpenRange(
       getPaymentEventAt(item),
       compareRange.startIso,
@@ -1148,10 +1052,7 @@ function buildReportsData(rawData, filters) {
     anprLogs,
     issues,
   }) {
-    const revenueSummary = summarizeReportRevenue(
-      payments,
-      reservations
-    )
+    const revenueSummary = summarizeReportRevenue(payments)
 
     const approved = anprLogs.filter(
       (item) => item.access_status === "approved"
@@ -1219,7 +1120,7 @@ function buildReportsData(rawData, filters) {
     analyticsSummary,
     trafficByDayData: createTrafficWeekData(rangeAnprLogs, rawData.parkingBays),
     trafficByMonthData: createTrafficMonthData(rawData.anprLogs),
-    revenueTrendData: createRevenueTrendData(rangePayments, rangeReservations),
+    revenueTrendData: createRevenueTrendData(rangePayments),
     revenueBreakdownReportData,
     conversionData: createBookingFlowData(
       rangeGuestBookings,
@@ -1240,13 +1141,16 @@ function buildReportsData(rawData, filters) {
     ]),
     anprDetectionData: createAnprDetectionData(rangeAnprLogs),
     zoneOccupancyReportData: createZoneOccupancyData(rawData.parkingBays),
-    liveActivityData: createLiveActivityData(rawData),
+    liveActivityData: createLiveActivityData({
+      ...rawData,
+      payments: guestPayments,
+    }),
     liveAlertsData: createLiveAlertsData(rawData),
     liveParkingFlowData: createLiveParkingFlowData(rawData.anprLogs),
     monthlySummary,
     compareSummary,
     monthlyTrafficData: createTrafficWeekData(monthlyAnprLogs, rawData.parkingBays),
-    monthlyRevenueData: createRevenueTrendData(monthlyPayments, monthlyReservations),
+    monthlyRevenueData: createRevenueTrendData(monthlyPayments),
     monthlyComparisonChartData,
   }
 }

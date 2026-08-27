@@ -130,6 +130,7 @@ async function getTodayPaymentTransactionRevenue() {
     .select(
       `
       id,
+      guest_booking_id,
       payment_type,
       amount,
       payment_status,
@@ -137,6 +138,7 @@ async function getTodayPaymentTransactionRevenue() {
       created_at
     `
     )
+    .not("guest_booking_id", "is", null)
 
   if (error) {
     throw new Error(error.message)
@@ -162,101 +164,13 @@ async function getTodayPaymentTransactionRevenue() {
 }
 
 // =====================================================
-// CHECK IF RESERVATION FEES ALREADY EXIST IN TRANSACTIONS
-// Prevents double counting later when app creates real payment rows.
-// =====================================================
-
-async function hasTodayReservationPaymentTransactions() {
-  const { data, error } = await supabase
-    .from("payment_transactions")
-    .select("id, payment_type, payment_status, paid_at, created_at")
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return (data || []).some((payment) => {
-    const paymentType = normalizeText(payment.payment_type)
-    const transactionDate = payment.paid_at || payment.created_at
-
-    const isReservationRelated =
-      paymentType === "reservation_fee" ||
-      paymentType === "reservation" ||
-      paymentType === "parking_fee" ||
-      paymentType === "after_7_parking_fee" ||
-      paymentType === "after_7"
-
-    return (
-      isTodayDate(transactionDate) &&
-      isPaidStatus(payment.payment_status) &&
-      isReservationRelated
-    )
-  })
-}
-
-// =====================================================
-// GET RESERVATION REVENUE TODAY
-// Temporary fallback source: reservations table
-// Used because current manual reservations are not inserted into
-// payment_transactions yet.
-// =====================================================
-
-async function getTodayReservationRevenueFallback() {
-  const { data, error } = await supabase
-    .from("reservations")
-    .select(
-      `
-      id,
-      reservation_fee,
-      after_7_parking_fee,
-      status,
-      reservation_start_at,
-      created_at
-    `
-    )
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return (data || []).reduce((total, reservation) => {
-    if (reservation.status === "cancelled") {
-      return total
-    }
-
-    const reservationDate =
-      reservation.reservation_start_at || reservation.created_at
-
-    if (!isTodayDate(reservationDate)) {
-      return total
-    }
-
-    const reservationFee = Number(reservation.reservation_fee || 0)
-    const after7Fee = Number(reservation.after_7_parking_fee || 0)
-
-    return total + reservationFee + after7Fee
-  }, 0)
-}
-
-// =====================================================
-// GET TODAY REVENUE
-// Source of truth:
-// 1. payment_transactions for real paid transactions
-// 2. reservations fallback only while reservation fees are not yet
-//    inserted into payment_transactions
+// GET TODAY GUEST REVENUE
+// Source of truth: Guest-linked payment_transactions only.
+// Historical Student/Staff payment rows remain stored but are excluded.
 // =====================================================
 
 async function getTodayRevenue() {
-  const paymentRevenue = await getTodayPaymentTransactionRevenue()
-  const hasReservationTransactions = await hasTodayReservationPaymentTransactions()
-
-  if (hasReservationTransactions) {
-    return paymentRevenue
-  }
-
-  const reservationRevenue = await getTodayReservationRevenueFallback()
-
-  return paymentRevenue + reservationRevenue
+  return getTodayPaymentTransactionRevenue()
 }
 
 // =====================================================
@@ -397,9 +311,9 @@ export async function loadAdminDashboardStats() {
       color: "bg-sky-50 text-sky-600",
     },
     {
-      label: "Revenue Today",
+      label: "Guest Revenue Today",
       value: formatRM(todayRevenue),
-      helper: "Paid transactions today",
+      helper: "Paid guest transactions today",
       icon: "money",
       color: "bg-teal-50 text-teal-600",
     },
@@ -452,50 +366,20 @@ export function subscribeToDashboardChanges(onChange) {
 }
 
 // =====================================================
-// PAYMENT TYPE LABEL MAPPER
+// GUEST PAYMENT TYPE LABEL MAPPER
 // =====================================================
 
 function mapRevenuePaymentType(type) {
   const cleanType = normalizeText(type)
 
   const typeMap = {
-    reservation_fee: "Reservation Fee",
-    reservation: "Reservation Fee",
-
-    parking_fee: "After 7PM Parking Fee",
-    after_7_parking_fee: "After 7PM Parking Fee",
-    after_7: "After 7PM Parking Fee",
-
     guest_parking: "Guest Parking Fee",
     guest_parking_fee: "Guest Parking Fee",
     guest: "Guest Parking Fee",
-
-    wallet_topup: "Wallet Top Up",
-    wallet_top_up: "Wallet Top Up",
-    topup: "Wallet Top Up",
-
     refund: "Refund",
   }
 
   return typeMap[cleanType] || "Other"
-}
-
-// =====================================================
-// CHECK IF RESERVATION PAYMENT ROW EXISTS
-// Prevents double counting when reservation fees are later inserted
-// into payment_transactions properly.
-// =====================================================
-
-function isReservationPaymentType(type) {
-  const cleanType = normalizeText(type)
-
-  return [
-    "reservation_fee",
-    "reservation",
-    "parking_fee",
-    "after_7_parking_fee",
-    "after_7",
-  ].includes(cleanType)
 }
 
 // =====================================================
@@ -508,6 +392,7 @@ async function loadPaymentTransactionBreakdownTotals() {
     .from("payment_transactions")
     .select(
       `
+      guest_booking_id,
       payment_type,
       amount,
       payment_status,
@@ -515,22 +400,18 @@ async function loadPaymentTransactionBreakdownTotals() {
       created_at
     `
     )
+    .not("guest_booking_id", "is", null)
 
   if (error) {
-    console.error("Load payment transaction breakdown error:", error)
-    throw new Error(error.message || "Failed to load payment breakdown.")
+    console.error("Load guest payment breakdown error:", error)
+    throw new Error(error.message || "Failed to load guest payment breakdown.")
   }
 
   const totals = {
     "Guest Parking Fee": 0,
-    "Reservation Fee": 0,
-    "After 7PM Parking Fee": 0,
-    "Wallet Top Up": 0,
     Refund: 0,
     Other: 0,
   }
-
-  let hasReservationPaymentTransactions = false
 
   ;(data || []).forEach((payment) => {
     const transactionDate = payment.paid_at || payment.created_at
@@ -541,10 +422,6 @@ async function loadPaymentTransactionBreakdownTotals() {
 
     const amount = Number(payment.amount || 0)
     const typeLabel = mapRevenuePaymentType(payment.payment_type)
-
-    if (isReservationPaymentType(payment.payment_type)) {
-      hasReservationPaymentTransactions = true
-    }
 
     if (isRefundTransaction(payment)) {
       totals.Refund += Math.abs(amount)
@@ -558,71 +435,15 @@ async function loadPaymentTransactionBreakdownTotals() {
     totals[typeLabel] = (totals[typeLabel] || 0) + amount
   })
 
-  return {
-    totals,
-    hasReservationPaymentTransactions,
-  }
-}
-
-// =====================================================
-// ADD RESERVATION FALLBACK BREAKDOWN
-// Source: reservations table
-// Used while reservation fee / after 7PM fee are not yet inserted
-// into payment_transactions.
-// =====================================================
-
-async function addReservationFallbackBreakdownTotals(totals) {
-  const { data, error } = await supabase
-    .from("reservations")
-    .select(
-      `
-      reservation_fee,
-      after_7_parking_fee,
-      status,
-      reservation_start_at,
-      created_at
-    `
-    )
-
-  if (error) {
-    console.error("Load reservation breakdown fallback error:", error)
-    throw new Error(
-      error.message || "Failed to load reservation revenue fallback."
-    )
-  }
-
-  ;(data || []).forEach((reservation) => {
-    if (reservation.status === "cancelled") {
-      return
-    }
-
-    const reservationDate =
-      reservation.reservation_start_at || reservation.created_at
-
-    if (!isTodayDate(reservationDate)) {
-      return
-    }
-
-    totals["Reservation Fee"] += Number(reservation.reservation_fee || 0)
-    totals["After 7PM Parking Fee"] += Number(
-      reservation.after_7_parking_fee || 0
-    )
-  })
-
   return totals
 }
 
 // =====================================================
-// LOAD REVENUE BREAKDOWN
+// LOAD GUEST REVENUE BREAKDOWN
 // =====================================================
 
 export async function loadRevenueBreakdownData() {
-  const { totals, hasReservationPaymentTransactions } =
-    await loadPaymentTransactionBreakdownTotals()
-
-  if (!hasReservationPaymentTransactions) {
-    await addReservationFallbackBreakdownTotals(totals)
-  }
+  const totals = await loadPaymentTransactionBreakdownTotals()
 
   return Object.entries(totals)
     .filter(([, value]) => Number(value || 0) > 0)
@@ -686,13 +507,12 @@ function formatTimeAgo(value) {
 function mapActivityPaymentType(type) {
   const typeMap = {
     guest_parking: "Guest parking payment",
-    reservation_fee: "Reservation fee",
-    parking_fee: "Parking fee",
-    wallet_topup: "Wallet top-up",
-    refund: "Refund",
+    guest_parking_fee: "Guest parking payment",
+    guest: "Guest parking payment",
+    refund: "Guest refund",
   }
 
-  return typeMap[type] || "Payment"
+  return typeMap[normalizeText(type)] || "Guest payment"
 }
 
 // =====================================================
@@ -787,6 +607,7 @@ export async function loadRecentDashboardActivities() {
       .select(
         `
         id,
+        guest_booking_id,
         transaction_reference,
         payment_type,
         amount,
@@ -801,6 +622,7 @@ export async function loadRecentDashboardActivities() {
         )
       `
       )
+      .not("guest_booking_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(8),
   ])

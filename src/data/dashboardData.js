@@ -48,9 +48,9 @@ export const dashboardStats = [
     color: "bg-sky-50 text-sky-600",
   },
   {
-    label: "Revenue Today",
+    label: "Guest Revenue Today",
     value: "RM 0.00",
-    helper: "Fees and bookings",
+    helper: "Paid guest transactions",
     icon: "money",
     color: "bg-teal-50 text-teal-600",
   },
@@ -104,8 +104,6 @@ export const reservationTrendData = [
 // =====================================================
 
 export const revenueBreakdownData = [
-  { name: "Reservation Fee", value: 0 },
-  { name: "Parking Fee", value: 0 },
   { name: "Guest Parking Fee", value: 0 },
   { name: "Refund", value: 0 },
 ]

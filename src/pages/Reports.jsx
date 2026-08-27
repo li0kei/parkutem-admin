@@ -15,7 +15,7 @@ import {
   Radio,
   RefreshCw,
   ScanLine,
-  Wallet,
+  CircleDollarSign,
 } from "lucide-react"
 
 import {
@@ -248,7 +248,7 @@ function Reports() {
       ["Metric", "Value"],
       ["Total Vehicles", currentSummary.totalVehicles],
       ["Average Occupancy", currentSummary.averageOccupancy],
-      ["Total Revenue", `RM ${formatMoney(currentSummary.totalRevenue)}`],
+      ["Guest Revenue", `RM ${formatMoney(currentSummary.totalRevenue)}`],
       ["Reservations", currentSummary.reservations],
       ["Guest Bookings", currentSummary.guestBookings],
       ["ANPR Accuracy", currentSummary.anprAccuracy],
@@ -362,7 +362,7 @@ function Reports() {
 
           <div className="relative z-10 mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <HeroMiniStat
-              label="Revenue"
+              label="Guest Revenue"
               value={`RM ${formatMoney(currentSummary.totalRevenue)}`}
             />
             <HeroMiniStat
@@ -580,7 +580,7 @@ function Reports() {
 
             <RevenueTrendChart
               data={monthlyRevenueData}
-              title={`${selectedMonthLabel} Revenue Trend`}
+              title={`${selectedMonthLabel} Guest Revenue Trend`}
             />
           </section>
 
@@ -638,10 +638,10 @@ function SummaryGrid({ summary }) {
       color: "bg-blue-50 text-blue-700",
     },
     {
-      label: "Total Revenue",
+      label: "Guest Revenue",
       value: `RM ${formatMoney(summary.totalRevenue)}`,
-      helper: "Paid transactions",
-      icon: Wallet,
+      helper: "Paid guest transactions",
+      icon: CircleDollarSign,
       color: "bg-emerald-50 text-emerald-700",
     },
     {
@@ -800,7 +800,7 @@ function RevenueTrendChart({ data = [], title = "Revenue Trend" }) {
   return (
     <ChartCard
       title={title}
-      subtitle="Reservation, parking, guest payment, and refund trend."
+      subtitle="Guest parking payment and refund trend."
     >
       {chartData.length === 0 ? (
         <EmptyChart title="No revenue trend data yet" />
@@ -813,8 +813,6 @@ function RevenueTrendChart({ data = [], title = "Revenue Trend" }) {
             <Tooltip formatter={(value) => `RM ${formatMoney(value)}`} />
             <Legend />
 
-            <Area type="monotone" dataKey="reservation" name="Reservation Fee" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.18} />
-            <Area type="monotone" dataKey="parking" name="After 7PM Parking" stroke="#2563eb" fill="#2563eb" fillOpacity={0.15} />
             <Area type="monotone" dataKey="guest" name="Guest Parking" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.16} />
             <Area type="monotone" dataKey="refund" name="Refund" stroke="#f97316" fill="#f97316" fillOpacity={0.12} />
           </AreaChart>
@@ -834,7 +832,7 @@ function RevenueBreakdownChart({ data = [] }) {
   return (
     <ChartCard
       title="Revenue Breakdown"
-      subtitle="Reservation fee, parking fee, guest fee, and refunds."
+      subtitle="Guest parking payments and refunds."
     >
       {chartData.length === 0 ? (
         <EmptyChart title="No revenue breakdown yet" />
@@ -1483,7 +1481,7 @@ function MonthlySummaryCard({ title, summary }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <InfoStat label="Vehicles" value={summary.totalVehicles} />
         <InfoStat label="Occupancy" value={summary.averageOccupancy} />
-        <InfoStat label="Revenue" value={`RM ${formatMoney(summary.totalRevenue)}`} />
+        <InfoStat label="Guest Revenue" value={`RM ${formatMoney(summary.totalRevenue)}`} />
         <InfoStat label="Reservations" value={summary.reservations} />
         <InfoStat label="Guest Bookings" value={summary.guestBookings} />
         <InfoStat label="ANPR Accuracy" value={summary.anprAccuracy} />

@@ -138,7 +138,7 @@ function Dashboard() {
 
               <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
                 Monitor ANPR access, bay availability, guest bookings,
-                reservations, payments, stickers, and user support activity.
+                reservations, guest payments, stickers, and user support activity.
               </p>
             </div>
 
@@ -158,9 +158,9 @@ function Dashboard() {
               </div>
 
               <div className="col-span-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur sm:col-span-1">
-                <p className="text-2xl font-black text-cyan-300">7AM–7PM</p>
+                <p className="text-2xl font-black text-cyan-300">24/7 FREE</p>
                 <p className="mt-1 text-xs font-semibold text-slate-400">
-                  Free student/staff parking
+                  Student/staff parking
                 </p>
               </div>
             </div>
