@@ -8,8 +8,6 @@ import { supabase } from "../lib/supabaseClient"
 // CONSTANTS
 // =====================================================
 
-const RESERVATION_FEE_AMOUNT = 2
-const AFTER_7_RATE_PER_HOUR = 1
 
 const RESERVATION_STATUSES = ["upcoming", "active", "completed", "cancelled"]
 
@@ -246,17 +244,6 @@ function formatDuration(startValue, endValue) {
   return `${hours} hour${hours > 1 ? "s" : ""} ${minutes} minutes`
 }
 
-function getOverlapMinutes(start, end, windowStart, windowEnd) {
-  const overlapStart = Math.max(start.getTime(), windowStart.getTime())
-  const overlapEnd = Math.min(end.getTime(), windowEnd.getTime())
-
-  if (overlapEnd <= overlapStart) {
-    return 0
-  }
-
-  return Math.floor((overlapEnd - overlapStart) / 60000)
-}
-
 export function calculateAfter7ParkingFee(startValue, endValue) {
   const start = toValidDate(startValue, "Reservation start time")
   const end = toValidDate(endValue, "Reservation end time")
@@ -265,67 +252,18 @@ export function calculateAfter7ParkingFee(startValue, endValue) {
     throw new Error("Reservation end time must be later than start time.")
   }
 
-  let totalPaidMinutes = 0
-
-  const currentDay = new Date(start)
-  currentDay.setHours(0, 0, 0, 0)
-
-  while (currentDay < end) {
-    const nextDay = new Date(currentDay)
-    nextDay.setDate(nextDay.getDate() + 1)
-
-    const earlyMorningStart = new Date(currentDay)
-    earlyMorningStart.setHours(0, 0, 0, 0)
-
-    const earlyMorningEnd = new Date(currentDay)
-    earlyMorningEnd.setHours(7, 0, 0, 0)
-
-    const eveningStart = new Date(currentDay)
-    eveningStart.setHours(19, 0, 0, 0)
-
-    const eveningEnd = new Date(nextDay)
-    eveningEnd.setHours(0, 0, 0, 0)
-
-    totalPaidMinutes += getOverlapMinutes(
-      start,
-      end,
-      earlyMorningStart,
-      earlyMorningEnd
-    )
-
-    totalPaidMinutes += getOverlapMinutes(
-      start,
-      end,
-      eveningStart,
-      eveningEnd
-    )
-
-    currentDay.setDate(currentDay.getDate() + 1)
-  }
-
-  const payableHours = totalPaidMinutes / 60
-
-  return roundMoney(payableHours * AFTER_7_RATE_PER_HOUR)
-}
-
-function calculateStudentAfter7ParkingFee(startValue, endValue) {
-  // PARKUTEM_STUDENT_FREE_24_7_V1
-  void startValue
-  void endValue
+  // PARKUTEM_UTEM_FREE_24_7_ADMIN_V1
   return 0
 }
 
 export function calculateReservationFees(startValue, endValue, userType = null) {
-  const isStudent = String(userType || "").trim().toLowerCase() === "student"
-  const reservationFee = isStudent ? 0 : RESERVATION_FEE_AMOUNT
-  const after7ParkingFee = isStudent
-    ? calculateStudentAfter7ParkingFee(startValue, endValue)
-    : calculateAfter7ParkingFee(startValue, endValue)
+  calculateAfter7ParkingFee(startValue, endValue)
+  void userType
 
   return {
-    reservationFee: roundMoney(reservationFee),
-    after7ParkingFee: roundMoney(after7ParkingFee),
-    totalAmount: roundMoney(reservationFee + after7ParkingFee),
+    reservationFee: 0,
+    after7ParkingFee: 0,
+    totalAmount: 0,
   }
 }
 
@@ -387,8 +325,10 @@ export function mapReservationForAdmin(reservation) {
   const startAt = reservation.reservation_start_at
   const endAt = reservation.reservation_end_at
 
-  const reservationFee = Number(reservation.reservation_fee || 0)
-  const after7Fee = Number(reservation.after_7_parking_fee || 0)
+  // Student and Staff reservation/parking are FREE 24/7.
+  // Historical raw fee columns remain untouched in the database.
+  const reservationFee = 0
+  const after7Fee = 0
 
   return {
     id: reservation.id,
@@ -427,14 +367,9 @@ export function mapReservationForAdmin(reservation) {
     after7ParkingFee: after7Fee,
     totalFee: roundMoney(reservationFee + after7Fee),
 
-    parkingFeeRule:
-      String(reservation.user_type || "").toLowerCase() === "student"
-        ? "Student parking is free"
-        : after7Fee > 0
-          ? "After 7PM parking fee applied"
-          : "No after-7PM parking fee recorded",
+    parkingFeeRule: "UTeM student/staff parking is FREE 24/7",
 
-    paymentMethod: reservation.payment_method || "wallet",
+    paymentMethod: reservation.payment_method || null,
     status: mapStatus(reservation.status),
     statusValue: reservation.status || "upcoming",
 
@@ -812,9 +747,6 @@ export async function checkReservationBayAvailability({
   }
 }
 
-// =====================================================
-// PAYMENT + WALLET
-// =====================================================
 
 // =====================================================
 // BAY STATUS SYNC
@@ -910,9 +842,7 @@ async function buildReservationPayload(inputPayload, existingReservation = null)
         vehicle.normalized_plate_number || normalizePlateNumber(vehicle.plate_number),
       reservation_start_at: startIso,
       reservation_end_at: endIso,
-      reservation_fee: fees.reservationFee,
-      after_7_parking_fee: fees.after7ParkingFee,
-      payment_method: "wallet",
+
       status,
       remarks,
       updated_at: new Date().toISOString(),
@@ -940,9 +870,6 @@ export async function createAdminReservation(payload) {
     "End time"
   )
 
-  const chargeWallet =
-    getPayloadValue(payload, ["chargeWallet", "charge_wallet"], true) !== false
-
   const { values } = await buildReservationPayload(payload)
 
   const { data, error } = await supabase.rpc("admin_create_reservation_atomic", {
@@ -953,7 +880,7 @@ export async function createAdminReservation(payload) {
     p_reservation_end_at: values.reservation_end_at,
     p_status: values.status,
     p_remarks: values.remarks,
-    p_charge_wallet: chargeWallet,
+    p_charge_wallet: false,
   })
 
   if (error) {
@@ -977,9 +904,6 @@ export async function createAdminReservation(payload) {
 export async function updateAdminReservation(reservationId, payload) {
   const existingReservation = await fetchReservationRecordById(reservationId)
 
-  const chargeWallet =
-    getPayloadValue(payload, ["chargeWallet", "charge_wallet"], false) === true
-
   const { values } = await buildReservationPayload(payload, existingReservation)
 
   const { data, error } = await supabase.rpc("admin_update_reservation_atomic", {
@@ -991,7 +915,7 @@ export async function updateAdminReservation(reservationId, payload) {
     p_reservation_end_at: values.reservation_end_at,
     p_status: values.status,
     p_remarks: values.remarks,
-    p_charge_wallet: chargeWallet,
+    p_charge_wallet: false,
   })
 
   if (error) {

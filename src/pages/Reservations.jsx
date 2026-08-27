@@ -9,15 +9,12 @@ import {
   Car,
   CheckCircle,
   Clock3,
-  CreditCard,
   MapPin,
   MoreHorizontal,
-  Moon,
   Plus,
   Save,
   Timer,
   User,
-  Wallet,
   X,
   XCircle,
 } from "lucide-react"
@@ -140,7 +137,6 @@ function createDefaultReservationForm() {
     reservationEndAt: toDateTimeLocalInput(end),
     status: "upcoming",
     remarks: "",
-    chargeWallet: true,
   }
 }
 
@@ -165,7 +161,6 @@ function createEditReservationForm(reservation) {
       reservation?.raw?.remarks && reservation.raw.remarks !== "-"
         ? reservation.raw.remarks
         : "",
-    chargeWallet: false,
   }
 }
 
@@ -367,15 +362,6 @@ function Reservations() {
   // =====================================================
 
   const summary = useMemo(() => {
-    const reservationRevenue = monthlyReservationData.reduce(
-      (total, item) => total + Number(item.reservationFee || 0),
-      0
-    )
-
-    const after7Revenue = monthlyReservationData.reduce(
-      (total, item) => total + Number(item.after7ParkingFee || 0),
-      0
-    )
 
     return {
       total: monthlyReservationData.length,
@@ -395,12 +381,7 @@ function Reservations() {
         (item) => item.status === "Cancelled"
       ).length,
 
-      after7: monthlyReservationData.filter(
-        (item) => Number(item.after7ParkingFee || 0) > 0
-      ).length,
 
-      reservationRevenue,
-      after7Revenue,
     }
   }, [monthlyReservationData])
 
@@ -445,15 +426,9 @@ function Reservations() {
 
     try {
       if (formMode === "edit" && formReservation?.id) {
-        await updateAdminReservation(formReservation.id, {
-          ...formValues,
-          chargeWallet: Boolean(formValues.chargeWallet),
-        })
+        await updateAdminReservation(formReservation.id, formValues)
       } else {
-        await createAdminReservation({
-          ...formValues,
-          chargeWallet: true,
-        })
+        await createAdminReservation(formValues)
       }
 
       await loadReservations({ silent: true })
@@ -659,8 +634,8 @@ function Reservations() {
               </h2>
 
               <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
-                Monitor advance bay reservations, fixed reservation fees, and
-                after-7PM parking charges.
+                Monitor Student and Staff bay reservations with free 24/7
+                parking and reservation access.
               </p>
             </div>
 
@@ -711,10 +686,10 @@ function Reservations() {
             />
 
             <SummaryCard
-              label="After 7PM"
-              value={summary.after7}
-              icon={Moon}
-              className="bg-violet-300/10 text-violet-300"
+              label="Free 24/7"
+              value="RM 0.00"
+              icon={CheckCircle}
+              className="bg-emerald-300/10 text-emerald-300"
             />
           </div>
         </div>
@@ -732,8 +707,8 @@ function Reservations() {
             </h3>
 
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              Reservation counts, fixed fees, and after-7PM charges are filtered
-              by selected reservation month.
+              Reservation counts are filtered by selected reservation month.
+              Student and Staff pricing remains FREE 24/7.
             </p>
           </div>
 
@@ -767,45 +742,45 @@ function Reservations() {
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-[2rem] border border-cyan-100 bg-cyan-50 p-5 shadow-sm">
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-cyan-600">
-            <CreditCard className="h-5 w-5" />
+            <CalendarCheck className="h-5 w-5" />
           </div>
 
           <h3 className="text-lg font-black text-slate-950">
-            Student / Staff Reservation Fee
+            Reservation Fee
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Students: reservation and parking are free. Staff retain the existing fixed fee.
+            UTeM Students and Staff can reserve a parking bay free at any time.
           </p>
 
           <p className="mt-4 text-2xl font-black text-cyan-700">
-            RM {summary.reservationRevenue.toFixed(2)}
+            RM 0.00
           </p>
 
           <p className="mt-1 text-xs font-bold text-slate-500">
-            Staff reservation fee recorded
+            FREE for Student and Staff
           </p>
         </div>
 
-        <div className="rounded-[2rem] border border-violet-100 bg-violet-50 p-5 shadow-sm">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-violet-600">
-            <Moon className="h-5 w-5" />
+        <div className="rounded-[2rem] border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-600">
+            <CheckCircle className="h-5 w-5" />
           </div>
 
           <h3 className="text-lg font-black text-slate-950">
-            After 7PM Parking Fee
+            Parking After 7PM
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Students park for free at all times. Staff retain the existing parking fee rule.
+            UTeM Students and Staff continue to park free after 7PM.
           </p>
 
-          <p className="mt-4 text-2xl font-black text-violet-700">
-            RM {summary.after7Revenue.toFixed(2)}
+          <p className="mt-4 text-2xl font-black text-emerald-700">
+            RM 0.00
           </p>
 
           <p className="mt-1 text-xs font-bold text-slate-500">
-            Total after-7PM parking fee recorded
+            FREE 24/7 for Student and Staff
           </p>
         </div>
       </section>
@@ -870,7 +845,7 @@ function Reservations() {
 
           <div className="flex items-center gap-3">
             <span className="hidden rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700 xl:inline-flex">
-              Student Parking Free
+              Student & Staff FREE 24/7
             </span>
 
             <button
@@ -963,10 +938,7 @@ function Reservations() {
                   </td>
 
                   <td className="px-4 py-5 align-top">
-                    <FeeText
-                      reservationFee={reservation.reservationFee}
-                      after7ParkingFee={reservation.after7ParkingFee}
-                    />
+                    <FeeText />
                   </td>
 
                   <td className="px-4 py-5 align-top">
@@ -1062,10 +1034,7 @@ function Reservations() {
                   Fees
                 </p>
 
-                <FeeText
-                  reservationFee={reservation.reservationFee}
-                  after7ParkingFee={reservation.after7ParkingFee}
-                />
+                <FeeText />
               </div>
             </div>
 
@@ -1206,12 +1175,10 @@ function ReservationFormModal({
       }
     } catch (feeError) {
       return {
-        reservationFee:
-          selectedUser?.userType?.toLowerCase() === "student" ? 0 : 2,
+        reservationFee: 0,
         after7ParkingFee: 0,
-        totalAmount:
-          selectedUser?.userType?.toLowerCase() === "student" ? 0 : 2,
-        error: feeError.message || "Unable to calculate fee.",
+        totalAmount: 0,
+        error: feeError.message || "Unable to validate reservation schedule.",
       }
     }
   }, [form.reservationStartAt, form.reservationEndAt, selectedUser])
@@ -1282,7 +1249,6 @@ function ReservationFormModal({
       reservationEndAt: form.reservationEndAt,
       status: form.status,
       remarks: form.remarks.trim() || null,
-      chargeWallet: mode === "create" ? true : Boolean(form.chargeWallet),
     })
   }
 
@@ -1443,40 +1409,17 @@ function ReservationFormModal({
                   />
                 </div>
 
-                {mode === "edit" && (
-                  <label className="flex cursor-pointer gap-3 rounded-2xl border border-violet-100 bg-violet-50 p-4">
-                    <input
-                      type="checkbox"
-                      checked={form.chargeWallet}
-                      onChange={(event) =>
-                        updateField("chargeWallet", event.target.checked)
-                      }
-                      disabled={isSaving}
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
-                    />
 
-                    <div>
-                      <p className="text-sm font-black text-slate-900">
-                        Charge wallet if additional fee is needed
-                      </p>
-
-                      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                        For edit mode, this only charges the unpaid difference if
-                        the updated fee is higher than the existing paid amount.
-                      </p>
-                    </div>
-                  </label>
-                )}
               </div>
 
               <div className="space-y-4">
                 <div className="rounded-[1.5rem] border border-cyan-100 bg-cyan-50 p-5">
                   <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-cyan-600">
-                    <Wallet className="h-5 w-5" />
+                    <CheckCircle className="h-5 w-5" />
                   </div>
 
                   <p className="text-sm font-black text-slate-950">
-                    Payment Preview
+                    UTeM Free 24/7
                   </p>
 
                   <div className="mt-4 space-y-3">
@@ -1491,7 +1434,7 @@ function ReservationFormModal({
                     />
 
                     <PreviewRow
-                      label="Total Wallet Charge"
+                      label="Total"
                       value={`RM ${formatMoney(feePreview.totalAmount)}`}
                       strong
                     />
@@ -1504,8 +1447,8 @@ function ReservationFormModal({
                   )}
 
                   <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">
-                    Payment transaction will use payment_type reservation_fee,
-                    payment_method wallet, and payment_status paid.
+                    No reservation fee, after-7PM fee, or wallet deduction is
+                    applied to UTeM Student and Staff reservations.
                   </p>
                 </div>
 
@@ -1744,21 +1687,15 @@ function SummaryCard({ label, value, icon: Icon, className }) {
 // FEE TEXT
 // =====================================================
 
-function FeeText({ reservationFee, after7ParkingFee }) {
+function FeeText() {
   return (
     <div>
-      <p className="text-sm font-black leading-5 text-slate-700">
-        Reservation: RM {Number(reservationFee || 0).toFixed(2)}
+      <p className="text-sm font-black leading-5 text-emerald-700">
+        Reservation: FREE
       </p>
 
-      <p
-        className={`mt-1 text-xs font-bold leading-5 ${
-          Number(after7ParkingFee || 0) > 0
-            ? "text-violet-700"
-            : "text-slate-400"
-        }`}
-      >
-        After 7PM: RM {Number(after7ParkingFee || 0).toFixed(2)}
+      <p className="mt-1 text-xs font-bold leading-5 text-emerald-600">
+        After 7PM: FREE
       </p>
     </div>
   )

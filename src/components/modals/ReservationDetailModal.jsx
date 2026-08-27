@@ -7,14 +7,12 @@ import {
   CalendarCheck,
   Car,
   Clock3,
-  CreditCard,
   Edit3,
   MapPin,
   Save,
   ShieldCheck,
   Trash2,
   User,
-  Wallet,
   X,
   XCircle,
 } from "lucide-react"
@@ -31,16 +29,7 @@ const statusOptions = ["Upcoming", "Active", "Completed", "Cancelled"]
 // HELPERS
 // =====================================================
 
-function formatMoney(value) {
-  return Number(value || 0).toFixed(2)
-}
 
-function getReservationTotal(reservation) {
-  return (
-    Number(reservation?.reservationFee || 0) +
-    Number(reservation?.after7ParkingFee || 0)
-  )
-}
 
 function canCancelReservation(reservation) {
   return !["Cancelled", "Completed"].includes(reservation?.status)
@@ -95,7 +84,6 @@ function ReservationDetailModal({
     onDelete?.(reservation)
   }
 
-  const totalFee = getReservationTotal(reservation)
   const isCancelled = reservation.status === "Cancelled"
   const isCompleted = reservation.status === "Completed"
 
@@ -198,47 +186,41 @@ function ReservationDetailModal({
                 FEE BREAKDOWN
                 ===================================================== */}
 
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+            <div className="rounded-[1.5rem] border border-emerald-100 bg-emerald-50 p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-black text-slate-950">
-                    Fee Breakdown
+                    UTeM Free 24/7
                   </p>
 
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    Students: reservation and parking are free. Staff: existing fee rules apply.
+                    Student and Staff reservation and parking are free at all times.
                   </p>
                 </div>
 
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-cyan-600">
-                  <CreditCard className="h-5 w-5" />
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-600">
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
               </div>
 
               <div className="mt-4 space-y-3">
                 <FeeRow
                   label="Reservation Fee"
-                  value={`RM ${formatMoney(reservation.reservationFee)}`}
-                  note={reservation.userType === "Student" ? "No fixed reservation fee for students" : "Fixed staff reservation fee"}
+                  value="RM 0.00"
+                  note="FREE for Student and Staff"
                 />
 
                 <FeeRow
                   label="After 7PM Parking Fee"
-                  value={`RM ${formatMoney(reservation.after7ParkingFee)}`}
-                  note={reservation.parkingFeeRule}
+                  value="RM 0.00"
+                  note="FREE after 7PM for Student and Staff"
                 />
 
                 <FeeRow
-                  label="Total Charged"
-                  value={`RM ${formatMoney(totalFee)}`}
-                  note="Wallet payment total for this reservation"
+                  label="Total"
+                  value="RM 0.00"
+                  note="No wallet deduction or UTeM reservation payment"
                   strong
-                />
-
-                <FeeRow
-                  label="Payment Method"
-                  value={reservation.paymentMethod || "wallet"}
-                  note="Student/staff wallet transaction"
                 />
               </div>
             </div>
@@ -281,20 +263,18 @@ function ReservationDetailModal({
                 </select>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-cyan-600">
-                  <Wallet className="h-5 w-5" />
+              <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-600">
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
 
                 <p className="text-sm font-black text-slate-950">
-                  Payment Rule
+                  Free Parking Rule
                 </p>
 
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Reservation payment uses{" "}
-                  <span className="font-black">payment_type</span>{" "}
-                  reservation_fee, <span className="font-black">method</span>{" "}
-                  wallet, and <span className="font-black">status</span> paid.
+                  UTeM Student and Staff reservations do not deduct wallet
+                  balance and do not create a new UTeM reservation charge.
                 </p>
               </div>
 
