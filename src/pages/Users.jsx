@@ -13,7 +13,6 @@ import {
   Plus,
   UserCheck,
   Users as UsersIcon,
-  Wallet,
   X,
 } from "lucide-react"
 
@@ -232,8 +231,9 @@ function Users() {
       staff: userData.filter((user) => user.role === "Staff").length,
       activeStickers: userData.filter((user) => user.stickerStatus === "Active")
         .length,
-      lowWallet: userData.filter((user) => Number(user.walletBalance || 0) < 10)
-        .length,
+      noVehicle: userData.filter(
+        (user) => !user.vehicleCount || user.vehicleCount <= 0
+      ).length,
       suspended: userData.filter((user) => user.accountStatus === "Suspended")
         .length,
     }
@@ -615,7 +615,7 @@ function SummaryPanel({ summary }) {
 
           <p className="hidden max-w-xl text-sm leading-6 text-slate-300 sm:block">
             Manage student and staff accounts, vehicle ownership, stickers, and
-            wallet balance.
+            account access.
           </p>
         </div>
 
@@ -649,9 +649,9 @@ function SummaryPanel({ summary }) {
           />
 
           <SummaryCard
-            label="Low Wallet"
-            value={summary.lowWallet}
-            icon={Wallet}
+            label="No Vehicle"
+            value={summary.noVehicle}
+            icon={CircleAlert}
             className="bg-amber-300/10 text-amber-300"
           />
 
@@ -779,7 +779,7 @@ function DesktopUserTable({
               <TableHead>Faculty / Dept.</TableHead>
               <TableHead>Vehicle</TableHead>
               <TableHead>Sticker</TableHead>
-              <TableHead>Wallet</TableHead>
+
               <TableHead>Account</TableHead>
               <TableHead>Action</TableHead>
             </tr>
@@ -833,9 +833,6 @@ function DesktopUserTable({
                   <StatusBadge status={user.stickerStatus} />
                 </td>
 
-                <td className="px-6 py-4">
-                  <WalletText amount={user.walletBalance} />
-                </td>
 
                 <td className="px-6 py-4">
                   <StatusBadge status={user.accountStatus} />
@@ -925,10 +922,7 @@ function MobileUserList({ users, totalUsers, onAddUser, onViewUser, onReset }) {
               value={`${user.vehiclePlate} • ${user.vehicleModel}`}
             />
 
-            <MobileInfo
-              label="Wallet"
-              value={`RM ${Number(user.walletBalance || 0).toFixed(2)}`}
-            />
+
           </div>
 
           <button
@@ -1002,30 +996,6 @@ function RolePill({ role }) {
   )
 }
 
-// =====================================================
-// WALLET TEXT
-// =====================================================
-
-function WalletText({ amount }) {
-  const safeAmount = Number(amount || 0)
-  const isLow = safeAmount < 10
-
-  return (
-    <div>
-      <p
-        className={`text-sm font-black ${
-          isLow ? "text-orange-600" : "text-slate-700"
-        }`}
-      >
-        RM {safeAmount.toFixed(2)}
-      </p>
-
-      {isLow && (
-        <p className="mt-1 text-xs font-bold text-orange-500">Low balance</p>
-      )}
-    </div>
-  )
-}
 
 // =====================================================
 // MOBILE INFO

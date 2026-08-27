@@ -95,15 +95,6 @@ function normalizePlateNumber(value) {
   return cleanPlateNumber(value).replace(/[^A-Z0-9]/g, "")
 }
 
-function safeNumber(value, fallback = 0) {
-  const number = Number(value)
-
-  if (Number.isNaN(number)) {
-    return fallback
-  }
-
-  return number
-}
 
 function generateFallbackTemporaryPassword(universityId) {
   const cleanedId = cleanUniversityId(universityId).replace(/[^A-Z0-9]/g, "")
@@ -454,7 +445,6 @@ function buildUserPayload(payload) {
     phone_number: cleanOptionalText(payload.phone),
     faculty: cleanText(payload.faculty) || "-",
     department: cleanText(payload.department) || "-",
-    wallet_balance: safeNumber(payload.walletBalance, 0),
     account_status: mapAccountStatusToDatabase(payload.accountStatus),
     last_activity_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

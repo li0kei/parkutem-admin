@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Trash2,
   User,
-  Wallet,
   X,
 } from "lucide-react"
 
@@ -121,7 +120,6 @@ function getInitialForm(user) {
     faculty: toInputValue(user?.faculty),
     department: toInputValue(user?.department),
 
-    walletBalance: Number(user?.walletBalance || 0),
     accountStatus: user?.accountStatus || "Active",
 
     temporaryPassword: "",
@@ -153,7 +151,6 @@ function getEmptyForm() {
     faculty: "",
     department: "",
 
-    walletBalance: 0,
     accountStatus: "Active",
 
     temporaryPassword: "",
@@ -597,11 +594,7 @@ function ViewContent({
           value={`${user.vehiclePlate} • ${user.vehicleModel}`}
         />
 
-        <InfoBox
-          icon={Wallet}
-          label="Wallet Balance"
-          value={`RM ${Number(user.walletBalance || 0).toFixed(2)}`}
-        />
+
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-4">
@@ -743,18 +736,6 @@ function EditContent({
             />
           </FormField>
 
-          <FormField label="Wallet Balance">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.walletBalance}
-              onChange={(event) =>
-                onChange("walletBalance", event.target.value)
-              }
-              className="input-field"
-            />
-          </FormField>
 
           <FormField label="Faculty">
             <input
