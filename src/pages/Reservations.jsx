@@ -775,7 +775,7 @@ function Reservations() {
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Students: no fixed reservation fee. Staff retain the existing fixed fee.
+            Students: reservation and parking are free. Staff retain the existing fixed fee.
           </p>
 
           <p className="mt-4 text-2xl font-black text-cyan-700">
@@ -797,7 +797,7 @@ function Reservations() {
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Students are free before 7PM and pay RM1/hour after 7PM based on reserved time. Staff retain the existing parking fee rule.
+            Students park for free at all times. Staff retain the existing parking fee rule.
           </p>
 
           <p className="mt-4 text-2xl font-black text-violet-700">
@@ -870,7 +870,7 @@ function Reservations() {
 
           <div className="flex items-center gap-3">
             <span className="hidden rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700 xl:inline-flex">
-              Student Free + After 7PM Rule
+              Student Parking Free
             </span>
 
             <button

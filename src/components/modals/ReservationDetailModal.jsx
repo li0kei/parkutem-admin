@@ -206,7 +206,7 @@ function ReservationDetailModal({
                   </p>
 
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    Students: no fixed reservation fee; RM1/hour after 7PM. Staff: existing fee rules apply.
+                    Students: reservation and parking are free. Staff: existing fee rules apply.
                   </p>
                 </div>
 

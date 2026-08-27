@@ -309,38 +309,10 @@ export function calculateAfter7ParkingFee(startValue, endValue) {
 }
 
 function calculateStudentAfter7ParkingFee(startValue, endValue) {
-  // PARKUTEM_STUDENT_PRICING_V1
-  // Student rule: only 19:00-24:00 is chargeable at RM1/hour.
-  const start = new Date(startValue)
-  const end = new Date(endValue)
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new Error("Invalid reservation date/time.")
-  }
-
-  if (end <= start) {
-    throw new Error("Reservation end time must be later than start time.")
-  }
-
-  let totalPaidMinutes = 0
-  const currentDay = new Date(start)
-  currentDay.setHours(0, 0, 0, 0)
-
-  while (currentDay < end) {
-    const nextDay = new Date(currentDay)
-    nextDay.setDate(nextDay.getDate() + 1)
-
-    const eveningStart = new Date(currentDay)
-    eveningStart.setHours(19, 0, 0, 0)
-
-    const eveningEnd = new Date(nextDay)
-    eveningEnd.setHours(0, 0, 0, 0)
-
-    totalPaidMinutes += getOverlapMinutes(start, end, eveningStart, eveningEnd)
-    currentDay.setDate(currentDay.getDate() + 1)
-  }
-
-  return roundMoney((totalPaidMinutes / 60) * AFTER_7_RATE_PER_HOUR)
+  // PARKUTEM_STUDENT_FREE_24_7_V1
+  void startValue
+  void endValue
+  return 0
 }
 
 export function calculateReservationFees(startValue, endValue, userType = null) {
@@ -457,9 +429,7 @@ export function mapReservationForAdmin(reservation) {
 
     parkingFeeRule:
       String(reservation.user_type || "").toLowerCase() === "student"
-        ? after7Fee > 0
-          ? "Student rate: RM1/hour after 7PM"
-          : "Student parking is free before 7PM"
+        ? "Student parking is free"
         : after7Fee > 0
           ? "After 7PM parking fee applied"
           : "No after-7PM parking fee recorded",

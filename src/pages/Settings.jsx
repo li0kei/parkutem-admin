@@ -357,7 +357,7 @@ function Settings() {
 
         <SettingsCard
           title="Reservation Policy"
-          subtitle="Students have no fixed reservation fee. This value remains the staff reservation fee."
+          subtitle="Students have no reservation or parking fee. This value remains the staff reservation fee."
           icon={Wallet}
         >
           <div className="grid gap-4 sm:grid-cols-2">
