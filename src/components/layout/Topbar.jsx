@@ -1,4 +1,4 @@
-﻿// =====================================================
+// =====================================================
 // IMPORTS
 // =====================================================
 
@@ -36,7 +36,7 @@ const pageTitleMap = {
   },
   "/users": {
     title: "Student/Staff Management",
-    subtitle: "Manage university users, wallet balance, and vehicle ownership.",
+    subtitle: "Manage university users, account status, and vehicle ownership.",
   },
   "/vehicles": {
     title: "Vehicles & Stickers",
@@ -51,9 +51,9 @@ const pageTitleMap = {
     subtitle: "Monitor paid guest bookings and ANPR access status.",
   },
   "/payments": {
-    title: "Wallet & Payment Transactions",
+    title: "Guest Payment Transactions",
     subtitle:
-      "Track reservation fees, parking fees, guest payments, and refunds.",
+      "Track guest parking payments, provider status, and refunds.",
   },
   "/reports": {
     title: "Reports & Analytics",

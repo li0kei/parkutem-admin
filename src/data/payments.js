@@ -1,6 +1,6 @@
 // =====================================================
-// PAYMENT FILTER OPTIONS
-// Backend source: Supabase payment_transactions + reservations fallback
+// GUEST PAYMENT FILTER OPTIONS
+// Backend source: Guest-linked Supabase payment_transactions only
 // =====================================================
 
 export const payments = []
@@ -11,10 +11,7 @@ export const payments = []
 
 export const paymentTypeOptions = [
   "All Types",
-  "Reservation Fee",
-  "After 7PM Parking Fee",
   "Guest Parking Fee",
-  "Wallet Top Up",
   "Refund",
 ]
 
@@ -36,9 +33,6 @@ export const paymentStatusOptions = [
 
 export const paymentUserTypeOptions = [
   "All Users",
-  "Student",
-  "Staff",
-  "Student/Staff",
   "Guest",
 ]
 
@@ -49,7 +43,6 @@ export const paymentUserTypeOptions = [
 export const paymentMethodOptions = [
   "All Methods",
   "Simulated",
-  "Wallet",
   "FPX",
   "Card",
   "TNG",
