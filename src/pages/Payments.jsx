@@ -6,10 +6,10 @@ import { useEffect, useMemo, useState } from "react"
 import {
   CheckCircle,
   CircleDollarSign,
+  Clock3,
   CreditCard,
   MoreHorizontal,
   Receipt,
-  Wallet,
   XCircle,
 } from "lucide-react"
 
@@ -19,12 +19,7 @@ import StatusBadge from "../components/common/StatusBadge"
 import PaymentDetailModal from "../components/modals/PaymentDetailModal"
 import { useAdminRealtimeRefresh } from "../hooks/useAdminRealtimeRefresh"
 
-import {
-  paymentMethodOptions,
-  paymentStatusOptions,
-  paymentTypeOptions,
-  paymentUserTypeOptions,
-} from "../data/payments"
+import { paymentStatusOptions } from "../data/payments"
 
 import { loadAdminPayments } from "../services/adminPaymentService"
 
@@ -90,7 +85,7 @@ function formatSelectedMonthLabel(selectedMonth) {
 }
 
 // =====================================================
-// WALLET & PAYMENT TRANSACTIONS PAGE
+// GUEST PAYMENT TRANSACTIONS PAGE
 // =====================================================
 
 function Payments() {
@@ -99,10 +94,7 @@ function Payments() {
   const [loadError, setLoadError] = useState("")
 
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedType, setSelectedType] = useState("All Types")
   const [selectedStatus, setSelectedStatus] = useState("All Status")
-  const [selectedUserType, setSelectedUserType] = useState("All Users")
-  const [selectedMethod, setSelectedMethod] = useState("All Methods")
   const [selectedPayment, setSelectedPayment] = useState(null)
 
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
@@ -160,7 +152,6 @@ useAdminRealtimeRefresh({
   tables: [
     "payment_transactions",
     "guest_bookings",
-    "reservations",
   ],
   onRefresh: () => {
     loadPayments({ silent: true })
@@ -199,34 +190,15 @@ const monthlyPaymentData = useMemo(() => {
         payment.providerBillId.toLowerCase().includes(searchValue) ||
         payment.providerReference.toLowerCase().includes(searchValue)
 
-      const matchesType =
-        selectedType === "All Types" || payment.type === selectedType
-
       const matchesStatus =
         selectedStatus === "All Status" || payment.status === selectedStatus
 
-      const matchesUserType =
-        selectedUserType === "All Users" || payment.userType === selectedUserType
-
-      const matchesMethod =
-        selectedMethod === "All Methods" ||
-        payment.paymentMethod === selectedMethod
-
-      return (
-        matchesSearch &&
-        matchesType &&
-        matchesStatus &&
-        matchesUserType &&
-        matchesMethod
-      )
+      return matchesSearch && matchesStatus
     })
   }, [
     monthlyPaymentData,
     searchTerm,
-    selectedType,
     selectedStatus,
-    selectedUserType,
-    selectedMethod,
   ])
 
 // =====================================================
@@ -236,21 +208,6 @@ const monthlyPaymentData = useMemo(() => {
 const summary = useMemo(() => {
   const successfulRevenue = monthlyPaymentData
     .filter((payment) => payment.amount > 0)
-    .filter((payment) => payment.status === "Paid")
-    .reduce((total, payment) => total + payment.amount, 0)
-
-  const reservationRevenue = monthlyPaymentData
-    .filter((payment) => payment.type === "Reservation Fee")
-    .filter((payment) => payment.status === "Paid")
-    .reduce((total, payment) => total + payment.amount, 0)
-
-  const parkingRevenue = monthlyPaymentData
-    .filter((payment) => payment.type === "After 7PM Parking Fee")
-    .filter((payment) => payment.status === "Paid")
-    .reduce((total, payment) => total + payment.amount, 0)
-
-  const guestRevenue = monthlyPaymentData
-    .filter((payment) => payment.type === "Guest Parking Fee")
     .filter((payment) => payment.status === "Paid")
     .reduce((total, payment) => total + payment.amount, 0)
 
@@ -270,9 +227,6 @@ const summary = useMemo(() => {
       (payment) => payment.status === "Failed"
     ).length,
     successfulRevenue,
-    reservationRevenue,
-    parkingRevenue,
-    guestRevenue,
     refunds,
   }
 }, [monthlyPaymentData])
@@ -283,10 +237,7 @@ const summary = useMemo(() => {
 
  function handleResetFilters() {
     setSearchTerm("")
-    setSelectedType("All Types")
     setSelectedStatus("All Status")
-    setSelectedUserType("All Users")
-    setSelectedMethod("All Methods")
     setSelectedMonth(getCurrentMonthValue())
   }
 
@@ -305,7 +256,7 @@ const summary = useMemo(() => {
 
         {isLoading && (
           <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700">
-            Loading real payment transactions from Supabase...
+            Loading Guest payment transactions from Supabase...
           </div>
         )}
 
@@ -325,13 +276,13 @@ const summary = useMemo(() => {
               </p>
 
               <h2 className="mt-2 text-xl font-black leading-tight text-white sm:text-2xl">
-                Wallet & Payment Transactions
+                Guest Payment Transactions
               </h2>
             </div>
 
             <p className="hidden max-w-xl text-sm leading-6 text-slate-300 sm:block">
-              Track reservation fees, after-7PM parking fees, guest payments,
-              wallet top-ups, and refunds.
+              Track Guest parking payments, provider verification, payment
+              status, revenue, and refunds.
             </p>
           </div>
 
@@ -353,7 +304,7 @@ const summary = useMemo(() => {
             <SummaryCard
               label="Pending"
               value={summary.pending}
-              icon={Wallet}
+              icon={Clock3}
               className="bg-amber-300/10 text-amber-300"
             />
 
@@ -432,29 +383,17 @@ const summary = useMemo(() => {
           REVENUE BREAKDOWN PANEL
           ===================================================== */}
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-4 lg:grid-cols-2">
         <RevenueCard
-          label="Reservation Fee"
-          amount={summary.reservationRevenue}
-          description="Fixed one-time fee"
+          label="Guest Parking Revenue"
+          amount={summary.successfulRevenue}
+          description="Paid Guest parking transactions"
         />
 
         <RevenueCard
-          label="After 7PM Parking"
-          amount={summary.parkingRevenue}
-          description="Charged by usage"
-        />
-
-        <RevenueCard
-          label="Guest Parking"
-          amount={summary.guestRevenue}
-          description="Guest web payment"
-        />
-
-        <RevenueCard
-          label="Refunds"
+          label="Guest Refunds"
           amount={summary.refunds}
-          description="Cancelled/refunded"
+          description="Guest payment refunds"
           negative
         />
       </section>
@@ -464,7 +403,7 @@ const summary = useMemo(() => {
           ===================================================== */}
 
       <section className="rounded-[2rem] border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
-        <div className="grid gap-4 xl:grid-cols-[1.4fr_0.75fr_0.75fr_0.75fr_0.75fr_auto] xl:items-end">
+        <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr_auto] xl:items-end">
           <div>
             <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">
               Search
@@ -473,36 +412,15 @@ const summary = useMemo(() => {
             <SearchInput
               value={searchTerm}
               onChange={setSearchTerm}
-              placeholder="Search transaction, user, reference, plate..."
+              placeholder="Search Guest, transaction, reference, plate..."
             />
           </div>
-
-          <FilterSelect
-            label="Type"
-            value={selectedType}
-            onChange={setSelectedType}
-            options={paymentTypeOptions}
-          />
 
           <FilterSelect
             label="Status"
             value={selectedStatus}
             onChange={setSelectedStatus}
             options={paymentStatusOptions}
-          />
-
-          <FilterSelect
-            label="User"
-            value={selectedUserType}
-            onChange={setSelectedUserType}
-            options={paymentUserTypeOptions}
-          />
-
-          <FilterSelect
-            label="Method"
-            value={selectedMethod}
-            onChange={setSelectedMethod}
-            options={paymentMethodOptions}
           />
 
           <button
@@ -532,7 +450,7 @@ const summary = useMemo(() => {
           </div>
 
           <span className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-700">
-            Supabase Records
+            Guest Payments Only
           </span>
         </div>
 
@@ -541,7 +459,7 @@ const summary = useMemo(() => {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-100/80 text-left">
                 <TableHead>Transaction</TableHead>
-                <TableHead>User</TableHead>
+                <TableHead>Guest</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Method</TableHead>
@@ -573,7 +491,7 @@ const summary = useMemo(() => {
                     </p>
 
                     <p className="mt-1 text-xs font-semibold text-slate-400">
-                      {payment.userType} â€¢ {payment.vehiclePlate}
+                      {payment.userType} • {payment.vehiclePlate}
                     </p>
                   </td>
 
@@ -669,7 +587,7 @@ const summary = useMemo(() => {
 
             <div className="mt-5 grid gap-3">
               <MobileInfo label="Amount" value={`RM ${Math.abs(payment.amount).toFixed(2)}`} />
-              <MobileInfo label="User Type / Plate" value={`${payment.userType} â€¢ ${payment.vehiclePlate}`} />
+              <MobileInfo label="User Type / Plate" value={`${payment.userType} • ${payment.vehiclePlate}`} />
               <MobileInfo label="Reference" value={payment.reference} />
               <MobileInfo label="Date / Time" value={payment.dateTime} />
               <MobileInfo label="Source" value={payment.source} />
@@ -768,11 +686,9 @@ function RevenueCard({ label, amount, description, negative = false }) {
 
 function TypePill({ type }) {
   const styles = {
-    "Reservation Fee": "bg-cyan-50 text-cyan-700",
-    "After 7PM Parking Fee": "bg-blue-50 text-blue-700",
     "Guest Parking Fee": "bg-violet-50 text-violet-700",
-    "Wallet Top Up": "bg-emerald-50 text-emerald-700",
-    Refund: "bg-orange-50 text-orange-700",
+    "Guest Refund": "bg-orange-50 text-orange-700",
+    "Guest Payment": "bg-cyan-50 text-cyan-700",
   }
 
   return (

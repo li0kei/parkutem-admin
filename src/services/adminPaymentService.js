@@ -45,22 +45,10 @@ function mapPaymentType(type) {
   const typeMap = {
     guest_parking: "Guest Parking Fee",
     guest_parking_fee: "Guest Parking Fee",
-
-    reservation_fee: "Reservation Fee",
-    reservation: "Reservation Fee",
-
-    parking_fee: "After 7PM Parking Fee",
-    after_7_parking_fee: "After 7PM Parking Fee",
-    after_7: "After 7PM Parking Fee",
-
-    wallet_topup: "Wallet Top Up",
-    wallet_top_up: "Wallet Top Up",
-    topup: "Wallet Top Up",
-
-    refund: "Refund",
+    refund: "Guest Refund",
   }
 
-  return typeMap[cleanType] || "Payment"
+  return typeMap[cleanType] || "Guest Payment"
 }
 
 // =====================================================
@@ -164,48 +152,11 @@ function mapProviderReason(reason) {
 function mapPaymentSource(type) {
   const cleanType = normalizeText(type)
 
-  if (cleanType === "guest_parking" || cleanType === "guest_parking_fee") {
-    return "Guest Web Portal"
-  }
-
-  if (cleanType === "wallet_topup" || cleanType === "wallet_top_up") {
-    return "Student/Staff App"
-  }
-
-  if (
-    cleanType === "parking_fee" ||
-    cleanType === "after_7_parking_fee" ||
-    cleanType === "after_7"
-  ) {
-    return "After-7PM Parking Charge"
-  }
-
-  if (cleanType === "reservation_fee" || cleanType === "reservation") {
-    return "Reservation Module"
-  }
-
   if (cleanType === "refund") {
-    return "Refund Module"
+    return "Guest Refund"
   }
 
-  return "ParkUTeM System"
-}
-
-// =====================================================
-// CHECK RESERVATION PAYMENT TYPE
-// Used to prevent duplicate fallback rows later.
-// =====================================================
-
-function isReservationPaymentType(type) {
-  const cleanType = normalizeText(type)
-
-  return [
-    "reservation_fee",
-    "reservation",
-    "parking_fee",
-    "after_7_parking_fee",
-    "after_7",
-  ].includes(cleanType)
+  return "Guest Web Portal"
 }
 
 // =====================================================
@@ -253,6 +204,7 @@ export async function fetchPaymentTransactions() {
         )
       `
       )
+      .not("guest_booking_id", "is", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to)
@@ -274,66 +226,6 @@ export async function fetchPaymentTransactions() {
 }
 
 // =====================================================
-// FETCH RESERVATION PAYMENT FALLBACKS
-// Source: reservations table
-// Temporary until all reservation billing creates transaction rows.
-// Fetches in 500-row ranges to avoid Supabase response row caps.
-// =====================================================
-
-export async function fetchReservationPaymentFallbacks() {
-  const allReservations = []
-
-  for (let from = 0; ; from += PAYMENT_FETCH_BATCH_SIZE) {
-    const to = from + PAYMENT_FETCH_BATCH_SIZE - 1
-
-    const { data, error } = await supabase
-      .from("reservations")
-      .select(
-        `
-        id,
-        reservation_reference,
-        university_user_id,
-        vehicle_record_id,
-        bay_id,
-        university_id,
-        user_name,
-        user_type,
-        plate_number,
-        normalized_plate_number,
-        reservation_start_at,
-        reservation_end_at,
-        reservation_fee,
-        after_7_parking_fee,
-        payment_method,
-        status,
-        remarks,
-        created_at,
-        updated_at
-      `
-      )
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to)
-
-    if (error) {
-      console.error("Fetch reservation payment fallback error:", error)
-      throw new Error(
-        error.message || "Failed to fetch reservation payment fallback records."
-      )
-    }
-
-    const batch = data || []
-    allReservations.push(...batch)
-
-    if (batch.length < PAYMENT_FETCH_BATCH_SIZE) {
-      break
-    }
-  }
-
-  return allReservations
-}
-
-// =====================================================
 // MAP PAYMENT TRANSACTION FOR ADMIN UI
 // =====================================================
 
@@ -348,10 +240,6 @@ export function mapPaymentForAdmin(payment) {
   const isProviderManaged = Boolean(cleanProvider)
   const isBillplz = cleanProvider === "billplz"
 
-  const isGuestPayment =
-    normalizeText(payment.payment_type) === "guest_parking" ||
-    normalizeText(payment.payment_type) === "guest_parking_fee"
-
   return {
     id: payment.id,
 
@@ -359,11 +247,8 @@ export function mapPaymentForAdmin(payment) {
     type: paymentType,
     amount: Number(payment.amount || 0),
 
-    userName: isGuestPayment
-      ? guestBooking?.visitor_name || "Guest"
-      : "Student/Staff User",
-
-    userType: isGuestPayment ? "Guest" : "Student/Staff",
+    userName: guestBooking?.visitor_name || "Guest",
+    userType: "Guest",
 
     reference:
       guestBooking?.booking_reference ||
@@ -401,166 +286,15 @@ export function mapPaymentForAdmin(payment) {
 }
 
 // =====================================================
-// FALLBACK PROVIDER FIELDS
-// =====================================================
-
-function getFallbackProviderFields() {
-  return {
-    paymentProvider: "-",
-    providerBillId: "-",
-    providerReference: "-",
-    providerStatus: "-",
-    providerReason: "-",
-    providerUpdatedAt: "-",
-    isProviderManaged: false,
-    isBillplz: false,
-  }
-}
-
-// =====================================================
-// MAP RESERVATION FEE FALLBACK FOR ADMIN UI
-// =====================================================
-
-function mapReservationFeeFallbackForAdmin(reservation) {
-  const status = reservation.status === "cancelled" ? "Refunded" : "Paid"
-
-  return {
-    id: `${reservation.id}-reservation-fee`,
-
-    transactionId: `${reservation.reservation_reference}-FEE`,
-    type: "Reservation Fee",
-    amount: Number(reservation.reservation_fee || 0),
-
-    userName: reservation.user_name || "Student/Staff User",
-    userType:
-      reservation.user_type === "student"
-        ? "Student"
-        : reservation.user_type === "staff"
-          ? "Staff"
-          : "Student/Staff",
-
-    reference: reservation.reservation_reference,
-    vehiclePlate: reservation.plate_number || "-",
-
-    dateTime: formatAdminDateTime(reservation.created_at),
-
-    paymentMethod: mapPaymentMethod(reservation.payment_method),
-    status,
-    source: "Reservation Module",
-
-    ...getFallbackProviderFields(),
-
-    remarks:
-      status === "Paid"
-        ? "Reservation fee is calculated from the reservations table when no real payment transaction exists."
-        : "Reservation was cancelled. Refund handling requires backend payment logic.",
-
-    raw: reservation,
-    dataSource: "reservation_fallback",
-  }
-}
-
-// =====================================================
-// MAP AFTER 7PM PARKING FALLBACK FOR ADMIN UI
-// =====================================================
-
-function mapAfter7ParkingFallbackForAdmin(reservation) {
-  const status = reservation.status === "cancelled" ? "Refunded" : "Paid"
-
-  return {
-    id: `${reservation.id}-after-7-parking-fee`,
-
-    transactionId: `${reservation.reservation_reference}-A7`,
-    type: "After 7PM Parking Fee",
-    amount: Number(reservation.after_7_parking_fee || 0),
-
-    userName: reservation.user_name || "Student/Staff User",
-    userType:
-      reservation.user_type === "student"
-        ? "Student"
-        : reservation.user_type === "staff"
-          ? "Staff"
-          : "Student/Staff",
-
-    reference: reservation.reservation_reference,
-    vehiclePlate: reservation.plate_number || "-",
-
-    dateTime: formatAdminDateTime(reservation.reservation_start_at),
-
-    paymentMethod: mapPaymentMethod(reservation.payment_method),
-    status,
-    source: "After-7PM Parking Charge",
-
-    ...getFallbackProviderFields(),
-
-    remarks:
-      status === "Paid"
-        ? "After-7PM parking fee is calculated from the reservation record when no real parking-session payment exists."
-        : "Reservation was cancelled. Refund handling requires backend payment logic.",
-
-    raw: reservation,
-    dataSource: "reservation_fallback",
-  }
-}
-
-// =====================================================
-// BUILD RESERVATION FALLBACK PAYMENT ROWS
-// =====================================================
-
-function buildReservationFallbackPaymentRows(reservations, existingPayments) {
-  const existingReservationPaymentIds = new Set(
-    existingPayments
-      .filter((payment) => isReservationPaymentType(payment.payment_type))
-      .map((payment) => payment.reservation_id)
-      .filter(Boolean)
-  )
-
-  return (reservations || []).flatMap((reservation) => {
-    if (existingReservationPaymentIds.has(reservation.id)) {
-      return []
-    }
-
-    const rows = []
-
-    if (Number(reservation.reservation_fee || 0) > 0) {
-      rows.push(mapReservationFeeFallbackForAdmin(reservation))
-    }
-
-    if (Number(reservation.after_7_parking_fee || 0) > 0) {
-      rows.push(mapAfter7ParkingFallbackForAdmin(reservation))
-    }
-
-    return rows
-  })
-}
-
-// =====================================================
 // LOAD ADMIN PAYMENTS
+// Guest-only active Admin view.
+// Historical Student/Staff payment rows remain preserved in the database.
 // =====================================================
 
 export async function loadAdminPayments() {
-  const [payments, reservations] = await Promise.all([
-    fetchPaymentTransactions(),
-    fetchReservationPaymentFallbacks(),
-  ])
+  const payments = await fetchPaymentTransactions()
 
-  const mappedPayments = payments.map(mapPaymentForAdmin)
-  const fallbackPayments = buildReservationFallbackPaymentRows(
-    reservations,
-    payments
-  )
-
-  return [...mappedPayments, ...fallbackPayments].sort((a, b) => {
-    const firstDate = new Date(
-      a.raw?.paid_at || a.raw?.created_at || a.raw?.reservation_start_at || 0
-    )
-
-    const secondDate = new Date(
-      b.raw?.paid_at || b.raw?.created_at || b.raw?.reservation_start_at || 0
-    )
-
-    return secondDate - firstDate
-  })
+  return payments.map(mapPaymentForAdmin)
 }
 
 // =====================================================
@@ -591,7 +325,7 @@ export async function updatePaymentTransactionStatus(paymentId, newStatus) {
 
   const { data: currentPayment, error: currentPaymentError } = await supabase
     .from("payment_transactions")
-    .select("id, payment_provider")
+    .select("id, guest_booking_id, payment_provider")
     .eq("id", paymentId)
     .single()
 
@@ -600,6 +334,10 @@ export async function updatePaymentTransactionStatus(paymentId, newStatus) {
     throw new Error(
       currentPaymentError.message || "Failed to verify payment transaction."
     )
+  }
+
+  if (!currentPayment?.guest_booking_id) {
+    throw new Error("Only Guest payment transactions are available in Admin Payments.")
   }
 
   if (normalizeText(currentPayment?.payment_provider)) {
@@ -668,7 +406,7 @@ export async function updatePaymentTransactionStatus(paymentId, newStatus) {
 // =====================================================
 
 export function subscribeToPayments(onChange) {
-  const watchedTables = ["payment_transactions", "reservations"]
+  const watchedTables = ["payment_transactions", "guest_bookings"]
 
   let channel = supabase.channel("admin-payment-transactions")
 

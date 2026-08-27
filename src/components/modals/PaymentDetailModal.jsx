@@ -5,11 +5,11 @@
 import {
   CalendarCheck,
   Car,
+  CircleDollarSign,
   CreditCard,
   Receipt,
   ShieldCheck,
   User,
-  Wallet,
   X,
 } from "lucide-react"
 
@@ -41,7 +41,7 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-5 py-5 sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-600">
-              Payment Transaction
+              Guest Payment Transaction
             </p>
 
             <h2 className="mt-1 break-words text-2xl font-black text-slate-950">
@@ -49,7 +49,7 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
             </h2>
 
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              {payment.type} â€¢ {payment.userName}
+              {payment.type} • {payment.userName}
             </p>
           </div>
 
@@ -80,15 +80,15 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
             />
 
             <InfoBox
-              icon={Wallet}
+              icon={CircleDollarSign}
               label="Amount"
               value={`${isRefund ? "-" : ""}RM ${Math.abs(amount).toFixed(2)}`}
             />
 
             <InfoBox
               icon={User}
-              label="User"
-              value={`${payment.userName} â€¢ ${payment.userType}`}
+              label="Guest"
+              value={`${payment.userName} • ${payment.userType}`}
             />
 
             <InfoBox
@@ -137,9 +137,9 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
               </div>
 
               <p className="mt-4 text-sm leading-6 text-slate-500">
-                This record is loaded from the ParkUTeM payment ledger in
-                Supabase. Provider-managed guest payments are verified
-                server-side before the booking is activated.
+                This Guest payment record is loaded from the ParkUTeM payment
+                ledger in Supabase. Provider-managed payments are verified
+                server-side before the Guest booking is activated.
               </p>
 
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -224,18 +224,17 @@ function PaymentDetailModal({ payment, isOpen, onClose }) {
 
           <div className="mt-6 rounded-[1.5rem] border border-cyan-100 bg-cyan-50 p-5">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-cyan-600">
-              <Wallet className="h-5 w-5" />
+              <ShieldCheck className="h-5 w-5" />
             </div>
 
             <p className="text-sm font-black text-slate-950">
-              ParkUTeM Payment Logic
+              Guest Payment Flow
             </p>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Student and staff transactions use the ParkUTeM wallet flow.
-              Guest parking payments use the guest web portal and Billplz
-              when a provider is attached. Guest no-show bookings remain
-              non-refundable according to the current parking rule.
+              Admin Payments displays Guest-linked payment records only.
+              Billplz/provider-managed payment status is verified by the
+              server-side callback and remains read-only in this view.
             </p>
           </div>
 
